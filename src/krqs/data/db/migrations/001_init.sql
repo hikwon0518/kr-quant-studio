@@ -1,0 +1,2 @@
+-- Migration 001: Initial schema
+-- Loaded from schema.sql via initialize_schema()
