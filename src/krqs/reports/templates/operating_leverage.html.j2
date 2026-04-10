@@ -1,0 +1,96 @@
+{% extends "base.html.j2" %}
+
+{% block content %}
+<header>
+<h1>Operating Leverage Analysis</h1>
+<div class="subtitle">{{ corp_label or "수동 입력 시나리오" }}</div>
+<div class="meta">
+    <span>Fiscal Year: {{ fiscal_year or "-" }}</span>
+    <span>Growth Rates: {{ growth_rate_range }}</span>
+    <span>Tax Rate: {{ "%.0f%%" | format(tax_rate * 100) }}</span>
+    <span>SGA YoY: {{ "%+.0f%%" | format(sga_growth * 100) }}</span>
+</div>
+</header>
+
+<h2>베이스라인 실적</h2>
+<div class="kpi-grid">
+    <div class="kpi">
+        <div class="label">매출액</div>
+        <div class="value">{{ "{:,.0f}".format(baseline.revenue / 1e8) }}억</div>
+    </div>
+    <div class="kpi">
+        <div class="label">GPM</div>
+        <div class="value">{{ "%.1f%%" | format(baseline.gpm * 100) }}</div>
+    </div>
+    <div class="kpi">
+        <div class="label">영업이익</div>
+        <div class="value">{{ "{:,.0f}".format(baseline.operating_income / 1e8) }}억</div>
+    </div>
+    <div class="kpi">
+        <div class="label">OPM</div>
+        <div class="value">{{ "%.1f%%" | format(baseline.opm * 100) }}</div>
+    </div>
+</div>
+
+<h2>가정</h2>
+<div class="assumption-list">
+<dl>
+<dt>GPM 밴드:</dt>
+<dd>Low {{ "%.1f%%" | format(gpm_band.low * 100) }} · Mid {{ "%.1f%%" | format(gpm_band.mid * 100) }} · High {{ "%.1f%%" | format(gpm_band.high * 100) }}</dd>
+</dl>
+<dl>
+<dt>법인세율:</dt>
+<dd>{{ "%.1f%%" | format(tax_rate * 100) }} (적자 시 0)</dd>
+</dl>
+<dl>
+<dt>판관비 YoY 증가율:</dt>
+<dd>{{ "%+.1f%%" | format(sga_growth * 100) }} (고정 가정)</dd>
+</dl>
+<dl>
+<dt>이자비용:</dt>
+<dd>{{ "{:,.0f}".format(baseline.interest_expense / 1e8) }}억 (고정 가정)</dd>
+</dl>
+</div>
+
+<h2>시나리오 매트릭스</h2>
+<p style="font-size: 9pt; color: #666;">적자전환 시나리오(이자비용 &gt; 영업이익)는 붉은색으로 표시.</p>
+<table class="matrix">
+<thead>
+<tr>
+    <th>성장률</th>
+    <th>GPM</th>
+    <th>매출(억)</th>
+    <th>매출총이익(억)</th>
+    <th>판관비(억)</th>
+    <th>영업이익(억)</th>
+    <th>OPM</th>
+    <th>이자비용(억)</th>
+    <th>세전이익(억)</th>
+    <th>순이익(억)</th>
+</tr>
+</thead>
+<tbody>
+{% for row in rows %}
+<tr class="{{ 'insolvent' if row.is_insolvent else '' }}">
+    <td class="text">{{ "%+.0f%%" | format(row.growth_rate * 100) }}</td>
+    <td class="text">{{ row.gpm_scenario }}</td>
+    <td>{{ "{:,.0f}".format(row.revenue / 1e8) }}</td>
+    <td>{{ "{:,.0f}".format(row.gross_profit / 1e8) }}</td>
+    <td>{{ "{:,.0f}".format(row.sga / 1e8) }}</td>
+    <td>{{ "{:,.0f}".format(row.operating_income / 1e8) }}</td>
+    <td>{{ "%.1f%%" | format(row.opm * 100) }}</td>
+    <td>{{ "{:,.0f}".format(row.interest_expense / 1e8) }}</td>
+    <td>{{ "{:,.0f}".format(row.pretax_income / 1e8) }}</td>
+    <td>{{ "{:,.0f}".format(row.net_income / 1e8) }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<h2>핵심 관찰</h2>
+<ul>
+{% for note in observations %}
+<li>{{ note }}</li>
+{% endfor %}
+</ul>
+{% endblock %}

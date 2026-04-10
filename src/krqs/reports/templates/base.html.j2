@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>{{ title }}</title>
+<style>
+@page {
+    size: A4;
+    margin: 18mm 16mm;
+}
+* { box-sizing: border-box; }
+body {
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", "맑은 고딕", sans-serif;
+    font-size: 10.5pt;
+    color: #1a1a1a;
+    line-height: 1.55;
+    margin: 0;
+    padding: 24px;
+    max-width: 900px;
+}
+header {
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+}
+header h1 {
+    margin: 0 0 4px 0;
+    font-size: 20pt;
+    letter-spacing: -0.02em;
+}
+header .subtitle {
+    color: #555;
+    font-size: 11pt;
+}
+header .meta {
+    margin-top: 12px;
+    color: #777;
+    font-size: 9pt;
+}
+header .meta span { margin-right: 16px; }
+h2 {
+    font-size: 14pt;
+    margin-top: 28px;
+    margin-bottom: 10px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #ddd;
+}
+h3 { font-size: 11pt; margin-top: 18px; margin-bottom: 6px; }
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin: 16px 0;
+}
+.kpi {
+    background: #f6f7f9;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    padding: 12px;
+}
+.kpi .label {
+    color: #666;
+    font-size: 9pt;
+    margin-bottom: 4px;
+}
+.kpi .value {
+    font-size: 14pt;
+    font-weight: 600;
+    color: #1a1a1a;
+}
+table.matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+    margin: 10px 0 16px 0;
+}
+table.matrix th, table.matrix td {
+    border: 1px solid #d4d8dd;
+    padding: 5px 8px;
+    text-align: right;
+}
+table.matrix th {
+    background: #eef0f4;
+    font-weight: 600;
+}
+table.matrix td.text { text-align: left; }
+table.matrix tr.insolvent td {
+    background: #ffe0e0;
+}
+.assumption-list {
+    background: #fafbfc;
+    border-left: 3px solid #4c78a8;
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 10pt;
+}
+.assumption-list dt { font-weight: 600; display: inline; }
+.assumption-list dd { display: inline; margin: 0 0 0 4px; }
+.assumption-list dl { margin: 0; }
+footer {
+    margin-top: 32px;
+    padding-top: 12px;
+    border-top: 1px solid #ddd;
+    color: #777;
+    font-size: 8pt;
+    line-height: 1.5;
+}
+footer .hash { font-family: "Consolas", "Courier New", monospace; }
+@media print {
+    body { padding: 0; }
+    .no-print { display: none; }
+}
+</style>
+</head>
+<body>
+{% block content %}{% endblock %}
+<footer>
+{% block footer %}
+<div>Report ID: <span class="hash">{{ report_id }}</span></div>
+<div>Parameter hash (SHA-256): <span class="hash">{{ param_hash }}</span></div>
+<div>Generated at: {{ generated_at }}</div>
+{% if data_source %}<div>Data source: {{ data_source }}</div>{% endif %}
+<div style="margin-top: 8px;">KR Quant Studio · 이 리포트는 자동 생성되었으며 투자 권유가 아닙니다.</div>
+{% endblock %}
+</footer>
+</body>
+</html>
