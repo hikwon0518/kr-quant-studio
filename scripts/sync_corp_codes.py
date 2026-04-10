@@ -1,29 +1,28 @@
 from __future__ import annotations
 
-from krqs.data.dart.client import DartClient
-from krqs.data.dart.corp_code import filter_listed, parse_corp_code_zip
+import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from krqs.data.db.connection import get_connection, initialize_schema
-from krqs.data.db.repositories.corps import count_listed, upsert_corps
+from krqs.services.data_sync_service import sync_corp_codes
 
 
 def main() -> int:
     print("Downloading corp_code.zip from DART...")
-    with DartClient() as client:
-        zip_bytes = client.fetch_corp_code_zip()
-    print(f"  downloaded {len(zip_bytes):,} bytes")
-
-    entries = parse_corp_code_zip(zip_bytes)
-    listed = filter_listed(entries)
-    print(f"  parsed {len(entries):,} entries ({len(listed):,} listed)")
-
     con = get_connection()
     initialize_schema(con)
-    upserted = upsert_corps(con, listed)
-    total_listed = count_listed(con)
-    con.close()
+    try:
+        result = sync_corp_codes(con)
+    finally:
+        con.close()
 
-    print(f"Upserted {upserted:,} listed corps.")
-    print(f"Total listed in DB: {total_listed:,}")
+    print(f"  downloaded {result.downloaded_bytes:,} bytes")
+    print(f"  parsed {result.parsed_total:,} entries")
+    print(f"Upserted {result.listed_upserted:,} listed corps.")
+    print(f"Total listed in DB: {result.listed_total_in_db:,}")
     return 0
 
 

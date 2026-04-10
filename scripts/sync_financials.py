@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
+import sys
 
-from krqs.data.dart.client import DartAPIError, DartClient
-from krqs.data.dart.parsers import parse_fnltt_single_acnt_all
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from krqs.data.db.connection import get_connection, initialize_schema
 from krqs.data.db.repositories.corps import find_by_name
-from krqs.data.db.repositories.financials import upsert_financials
+from krqs.services.data_sync_service import sync_corp_financials
 
 
 def _resolve_corp(con, query: str) -> tuple[str, str] | None:
@@ -35,7 +37,7 @@ def main() -> int:
         "--corp", required=True, help="종목명 또는 corp_code (8자리)"
     )
     parser.add_argument(
-        "--years", type=int, default=5, help="최근 N년치 동기화 (기본 5)"
+        "--years", type=int, default=5, help="최근 N년치 (기본 5)"
     )
     parser.add_argument(
         "--fs-div",
@@ -52,51 +54,40 @@ def main() -> int:
     if resolved is None:
         print(
             f"Could not resolve '{args.corp}'. "
-            "Run `make sync-corps` first or provide an exact 8-digit corp_code."
+            "Run `make sync-corps` first or provide an 8-digit corp_code."
         )
+        con.close()
         return 1
     corp_code, corp_name = resolved
-    print(f"Syncing {corp_name} ({corp_code}) — last {args.years} years")
+    print(f"Syncing {corp_name} ({corp_code}) - last {args.years} years")
 
-    current_year = date.today().year
-    success = 0
-    with DartClient() as client:
-        for year in range(current_year - args.years, current_year):
-            try:
-                resp = client.fetch_single_company_financials(
-                    corp_code=corp_code,
-                    bsns_year=year,
-                    reprt_code="11011",
-                    fs_div=args.fs_div,
-                )
-            except DartAPIError as e:
-                print(f"  {year}: API error — {e}")
-                continue
-            except Exception as e:
-                print(f"  {year}: unexpected error — {e}")
-                continue
+    BN = 100_000_000
 
-            if str(resp.get("status")) == "013":
-                print(f"  {year}: no data (status 013)")
-                continue
-
-            parsed = parse_fnltt_single_acnt_all(resp)
-            if parsed is None:
-                print(f"  {year}: parse failed")
-                continue
-
-            upsert_financials(con, parsed)
-            rev_bn = (parsed.revenue or 0) / 100_000_000
-            opi_bn = (parsed.operating_income or 0) / 100_000_000
+    def _progress(i, n, outcome):
+        if outcome.status == "ok":
+            rev_bn = (outcome.revenue or 0) / BN
+            op_bn = (outcome.operating_income or 0) / BN
             print(
-                f"  {year}: revenue={rev_bn:,.0f}억  "
-                f"operating_income={opi_bn:,.0f}억"
+                f"  [{i}/{n}] {outcome.year}: "
+                f"revenue={rev_bn:,.0f}억  operating_income={op_bn:,.0f}억"
             )
-            success += 1
+        else:
+            msg = outcome.message or ""
+            print(f"  [{i}/{n}] {outcome.year}: {outcome.status} {msg}")
 
-    con.close()
-    print(f"Done. {success}/{args.years} years synced.")
-    return 0 if success > 0 else 1
+    try:
+        result = sync_corp_financials(
+            con,
+            corp_code,
+            years=args.years,
+            fs_div=args.fs_div,
+            progress_callback=_progress,
+        )
+    finally:
+        con.close()
+
+    print(f"Done. {result.success_count}/{args.years} years synced.")
+    return 0 if result.success_count > 0 else 1
 
 
 if __name__ == "__main__":

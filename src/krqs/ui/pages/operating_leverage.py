@@ -11,6 +11,10 @@ from krqs.domain.operating_leverage import (
     GpmBand,
     build_scenario_matrix,
 )
+from krqs.services.data_sync_service import (
+    sync_corp_codes,
+    sync_corp_financials,
+)
 from krqs.services.simulator_service import (
     load_corp_baseline,
     search_corporations,
@@ -26,18 +30,29 @@ st.title("Operating Leverage Simulator")
 st.caption("매출 성장률 × GPM 밴드 시나리오 매트릭스")
 
 with st.sidebar:
-    st.header("종목 검색")
+    with st.expander("데이터 동기화", expanded=(listed_count == 0)):
+        if listed_count == 0:
+            st.warning("DB가 비어있습니다. 먼저 기업코드를 갱신하세요.")
+        else:
+            st.caption(f"DB 내 상장기업 {listed_count:,}개")
 
-    if listed_count == 0:
-        st.info(
-            "DB가 비어있습니다. 터미널에서 다음 명령을 실행하세요:\n\n"
-            "```bash\n"
-            "python -m uv run python scripts/sync_corp_codes.py\n"
-            "python -m uv run python scripts/sync_financials.py --corp 에코프로비엠\n"
-            "```"
-        )
-    else:
-        st.caption(f"DB 내 상장기업 {listed_count:,}개")
+        if st.button("기업코드 갱신 (DART)", width="stretch"):
+            with st.status("DART에서 기업코드 다운로드 중...", expanded=True) as status:
+                try:
+                    result = sync_corp_codes(con)
+                    status.update(
+                        label=f"기업코드 갱신 완료 · 상장 {result.listed_total_in_db:,}개",
+                        state="complete",
+                    )
+                    st.caption(
+                        f"다운로드 {result.downloaded_bytes / 1024:.0f} KB · "
+                        f"전체 {result.parsed_total:,} · 상장 {result.listed_upserted:,}"
+                    )
+                except Exception as e:
+                    status.update(label=f"실패: {e}", state="error")
+            st.rerun()
+
+    st.header("종목 검색")
 
     query = st.text_input(
         "종목명 또는 코드",
@@ -59,7 +74,40 @@ with st.sidebar:
         )
         selected = matches[selected_idx]
 
-        if st.button("자동 채우기", type="primary", width="stretch"):
+        sync_col, load_col = st.columns(2)
+        if sync_col.button("재무 동기화", width="stretch", help="DART에서 최근 5년치 재무 받아오기"):
+            with st.status(
+                f"{selected.corp_name} 재무 동기화 중...", expanded=True
+            ) as status:
+                progress_bar = st.progress(0.0)
+
+                def _progress(i, n, outcome):
+                    progress_bar.progress(i / n, text=f"{outcome.year}: {outcome.status}")
+
+                try:
+                    result = sync_corp_financials(
+                        con, selected.corp_code, years=5, progress_callback=_progress
+                    )
+                    status.update(
+                        label=f"동기화 완료 · {result.success_count}/5년 성공",
+                        state="complete" if result.success_count > 0 else "error",
+                    )
+                    for outcome in result.outcomes:
+                        if outcome.status == "ok":
+                            rev_bn = (outcome.revenue or 0) / BN
+                            op_bn = (outcome.operating_income or 0) / BN
+                            st.caption(
+                                f"{outcome.year}: 매출 {rev_bn:,.0f}억 · 영업이익 {op_bn:,.0f}억"
+                            )
+                        else:
+                            st.caption(
+                                f"{outcome.year}: {outcome.status}"
+                                + (f" ({outcome.message})" if outcome.message else "")
+                            )
+                except Exception as e:
+                    status.update(label=f"실패: {e}", state="error")
+
+        if load_col.button("자동 채우기", type="primary", width="stretch"):
             loaded = load_corp_baseline(con, selected.corp_code)
             if loaded is None:
                 st.error(
