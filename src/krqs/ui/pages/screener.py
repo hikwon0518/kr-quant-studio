@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from krqs.services.screener_service import get_available_years, screen_companies
@@ -8,12 +9,10 @@ from krqs.ui.state import BN, get_db
 con = get_db()
 
 st.title("Sector Screener")
-st.caption("상장 기업 재무 지표 필터 및 정렬")
+st.caption("DART 공시 기반 상장 기업 재무 스크리닝")
 
 # ── Sidebar: filters ────────────────────────────────────────────────
 with st.sidebar:
-    st.header("필터 설정")
-
     available_years = get_available_years(con)
     if not available_years:
         st.warning("DB에 재무 데이터가 없습니다. 먼저 데이터를 동기화하세요.")
@@ -21,66 +20,37 @@ with st.sidebar:
 
     fiscal_year = st.selectbox("회계연도", available_years, index=0)
 
-    st.subheader("수익성")
-    opm_range = st.slider(
-        "OPM (%)",
-        min_value=0.0,
-        max_value=100.0,
-        value=(0.0, 100.0),
-        step=1.0,
-        format="%.0f%%",
-        key="filter_opm",
-    )
-    min_gpm = st.slider(
-        "GPM 최소 (%)",
-        min_value=0.0,
-        max_value=100.0,
-        value=0.0,
-        step=1.0,
-        format="%.0f%%",
-        key="filter_gpm",
-    )
-    min_roe = st.slider(
-        "ROE 최소 (%)",
-        min_value=-100.0,
-        max_value=100.0,
-        value=-100.0,
-        step=1.0,
-        format="%.0f%%",
-        key="filter_roe",
-    )
-    min_ebitda_margin = st.slider(
-        "EBITDA Margin 최소 (%)",
-        min_value=0.0,
-        max_value=100.0,
-        value=0.0,
-        step=1.0,
-        format="%.0f%%",
-        key="filter_ebitda_margin",
-    )
+    with st.expander("수익성 필터", expanded=True):
+        opm_range = st.slider(
+            "OPM (%)", 0.0, 100.0, (0.0, 100.0), 1.0,
+            format="%.0f%%", key="filter_opm",
+        )
+        min_gpm = st.slider(
+            "GPM 최소 (%)", 0.0, 100.0, 0.0, 1.0,
+            format="%.0f%%", key="filter_gpm",
+        )
+        min_roe = st.slider(
+            "ROE 최소 (%)", -100.0, 100.0, -100.0, 1.0,
+            format="%.0f%%", key="filter_roe",
+        )
+        min_ebitda_margin = st.slider(
+            "EBITDA Margin 최소 (%)", 0.0, 100.0, 0.0, 1.0,
+            format="%.0f%%", key="filter_ebitda_margin",
+        )
 
-    st.subheader("안정성")
-    max_debt_ratio = st.slider(
-        "부채비율 최대 (%)",
-        min_value=0.0,
-        max_value=100.0,
-        value=100.0,
-        step=1.0,
-        format="%.0f%%",
-        key="filter_debt_ratio",
-    )
+    with st.expander("안정성 필터"):
+        max_debt_ratio = st.slider(
+            "부채비율 최대 (%)", 0.0, 100.0, 100.0, 1.0,
+            format="%.0f%%", key="filter_debt_ratio",
+        )
 
-    st.subheader("규모")
-    min_revenue_bn = st.number_input(
-        "매출 최소 (억원)",
-        min_value=0,
-        value=0,
-        step=100,
-        key="filter_revenue",
-    )
+    with st.expander("규모 필터"):
+        min_revenue_bn = st.number_input(
+            "매출 최소 (억원)", min_value=0, value=0, step=100,
+            key="filter_revenue",
+        )
 
     st.divider()
-    st.subheader("정렬")
 
     sort_options = {
         "OPM": "opm",
@@ -97,15 +67,17 @@ with st.sidebar:
     }
     sort_label = st.selectbox("정렬 기준", list(sort_options.keys()), index=0)
     sort_by = sort_options[sort_label]
-    sort_desc = st.radio("정렬 방향", ["내림차순", "오름차순"], horizontal=True) == "내림차순"
+    sort_desc = st.radio(
+        "정렬 방향", ["내림차순", "오름차순"], horizontal=True
+    ) == "내림차순"
 
-    limit = st.number_input("최대 표시 종목 수", min_value=10, max_value=1000, value=100, step=10)
+    limit = st.number_input(
+        "최대 표시 종목 수", min_value=10, max_value=1000, value=100, step=10
+    )
 
     run_search = st.button("검색", type="primary", use_container_width=True)
 
-# ── Resolve filter values ────────────────────────────────────────────
-# Convert percentage UI values to ratios (0-1 scale) for the DB query.
-# Only apply a filter when the user has moved it from the default "no filter" position.
+# ── Build active filters ────────────────────────────────────────────
 min_opm = opm_range[0] / 100.0 if opm_range[0] > 0.0 else None
 max_opm = opm_range[1] / 100.0 if opm_range[1] < 100.0 else None
 min_gpm_val = min_gpm / 100.0 if min_gpm > 0.0 else None
@@ -114,7 +86,23 @@ max_debt_val = max_debt_ratio / 100.0 if max_debt_ratio < 100.0 else None
 min_ebitda_val = min_ebitda_margin / 100.0 if min_ebitda_margin > 0.0 else None
 min_rev_won = int(min_revenue_bn * BN) if min_revenue_bn > 0 else None
 
-# Always run on first load; re-run when user clicks search.
+active_filters: list[str] = []
+if min_opm is not None:
+    active_filters.append(f"OPM >= {opm_range[0]:.0f}%")
+if max_opm is not None:
+    active_filters.append(f"OPM <= {opm_range[1]:.0f}%")
+if min_gpm_val is not None:
+    active_filters.append(f"GPM >= {min_gpm:.0f}%")
+if min_roe_val is not None:
+    active_filters.append(f"ROE >= {min_roe:.0f}%")
+if max_debt_val is not None:
+    active_filters.append(f"D/A <= {max_debt_ratio:.0f}%")
+if min_ebitda_val is not None:
+    active_filters.append(f"EBITDA M >= {min_ebitda_margin:.0f}%")
+if min_rev_won is not None:
+    active_filters.append(f"매출 >= {min_revenue_bn:,}억")
+
+# Auto-run on first load
 if "screener_ran" not in st.session_state:
     st.session_state["screener_ran"] = True
     run_search = True
@@ -139,34 +127,72 @@ df = screen_companies(
     limit=limit,
 )
 
-# ── Display results ──────────────────────────────────────────────────
-st.subheader(f"{len(df):,}개 종목 발견  (FY{fiscal_year})")
+# ── Active filter chips ─────────────────────────────────────────────
+if active_filters:
+    chips = " ".join(
+        f'<span style="background:#1E2536;border:1px solid #2A3040;border-radius:6px;'
+        f'padding:3px 10px;font-size:0.78rem;color:#00D4AA;margin-right:4px;">'
+        f'{f}</span>'
+        for f in active_filters
+    )
+    st.markdown(chips, unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+# ── KPI summary cards ───────────────────────────────────────────────
+st.subheader(f"{len(df):,}개 종목 발견  ·  FY{fiscal_year}")
 
 if df.empty:
-    st.warning("조건에 맞는 종목이 없습니다. 필터를 완화해보세요.")
+    st.markdown(
+        '<div style="text-align:center;padding:60px 0;color:#5A6577;">'
+        '<p style="font-size:2rem;margin-bottom:8px;">0</p>'
+        '<p>조건에 맞는 종목이 없습니다</p>'
+        '<p style="font-size:0.85rem;">필터를 완화하거나 회계연도를 변경해보세요</p>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
     st.stop()
 
-# Build a display copy with readable formatting.
+# Summary metrics from results
+c1, c2, c3, c4, c5 = st.columns(5)
+avg_opm = df["opm"].dropna().mean()
+avg_roe = df["roe"].dropna().mean()
+avg_debt = df["debt_ratio"].dropna().mean()
+total_rev = df["revenue"].dropna().sum()
+median_gpm = df["gpm"].dropna().median()
+
+c1.metric("평균 OPM", f"{avg_opm:.1%}" if pd.notna(avg_opm) else "-")
+c2.metric("평균 ROE", f"{avg_roe:.1%}" if pd.notna(avg_roe) else "-")
+c3.metric("중앙 GPM", f"{median_gpm:.1%}" if pd.notna(median_gpm) else "-")
+c4.metric("평균 부채비율", f"{avg_debt:.1%}" if pd.notna(avg_debt) else "-")
+c5.metric("합산 매출", f"{total_rev / BN:,.0f}억")
+
+st.divider()
+
+# ── Results table ────────────────────────────────────────────────────
 display = df.copy()
 
-# Money columns: convert from won to 억원.
-money_cols = ["revenue", "operating_income", "net_income", "total_assets", "total_equity", "ebitda"]
+money_cols = [
+    "revenue", "operating_income", "net_income",
+    "total_assets", "total_equity", "ebitda",
+]
 for col in money_cols:
     if col in display.columns:
-        display[col] = display[col].apply(lambda v: round(v / BN) if v is not None else None)
+        display[col] = display[col].apply(
+            lambda v: round(v / BN) if v is not None else None
+        )
 
-# Ratio columns: format as percentages.
 ratio_cols = ["gpm", "opm", "roe", "debt_ratio", "ebitda_margin"]
 for col in ratio_cols:
     if col in display.columns:
-        display[col] = display[col].apply(lambda v: f"{v:.1%}" if v is not None else "-")
+        display[col] = display[col].apply(
+            lambda v: f"{v:.1%}" if v is not None else "-"
+        )
 
-# Korean column names for display.
 col_rename = {
     "corp_name": "종목명",
     "stock_code": "종목코드",
     "market": "시장",
-    "fiscal_year": "회계연도",
+    "fiscal_year": "FY",
     "revenue": "매출(억)",
     "operating_income": "영업이익(억)",
     "net_income": "순이익(억)",
@@ -177,13 +203,13 @@ col_rename = {
     "roe": "ROE",
     "debt_ratio": "부채비율",
     "ebitda": "EBITDA(억)",
-    "ebitda_margin": "EBITDA Margin",
+    "ebitda_margin": "EBITDA%",
 }
 display = display.rename(columns=col_rename)
 
-st.dataframe(display, width="stretch", hide_index=True)
+st.dataframe(display, use_container_width=True, hide_index=True, height=500)
 
-# ── CSV download ─────────────────────────────────────────────────────
+# ── Download ─────────────────────────────────────────────────────────
 csv_bytes = display.to_csv(index=False).encode("utf-8-sig")
 st.download_button(
     label="CSV 다운로드",
