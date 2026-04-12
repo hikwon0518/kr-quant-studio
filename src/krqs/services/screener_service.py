@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Sequence
+
 import duckdb
 import pandas as pd
 
@@ -121,3 +123,81 @@ def screen_companies(
     columns = [desc[0] for desc in result.description]
     rows = result.fetchall()
     return pd.DataFrame(rows, columns=columns)
+
+
+def get_trend_data(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    years: Sequence[int] | None = None,
+    metric: str = "opm",
+    min_years: int = 2,
+    only_improving: bool = False,
+    sort_by: str = "latest",
+    limit: int = 200,
+) -> pd.DataFrame:
+    """Get multi-year trend data for a metric across all companies.
+
+    Returns a pivoted DataFrame: rows=companies, columns=years, values=metric.
+    If only_improving=True, filter to companies where metric increased every year.
+    """
+    if metric not in _SORTABLE_COLUMNS:
+        metric = "opm"
+
+    if years is None:
+        years = get_available_years(con)
+    if len(years) < min_years:
+        return pd.DataFrame()
+
+    placeholders = ", ".join("?" for _ in years)
+    sql = f"""
+        SELECT c.corp_code, c.corp_name, c.stock_code, c.market,
+               f.fiscal_year, f.{metric}
+        FROM financials_quarterly f
+        JOIN corps c ON c.corp_code = f.corp_code
+        WHERE f.fiscal_quarter = 4
+          AND f.fiscal_year IN ({placeholders})
+          AND c.stock_code IS NOT NULL
+          AND f.{metric} IS NOT NULL
+    """
+    df = con.execute(sql, list(years)).fetchdf()
+    if df.empty:
+        return pd.DataFrame()
+
+    pivot = df.pivot_table(
+        index=["corp_code", "corp_name", "stock_code", "market"],
+        columns="fiscal_year",
+        values=metric,
+    ).reset_index()
+
+    year_cols = sorted([c for c in pivot.columns if isinstance(c, int)])
+    if len(year_cols) < min_years:
+        return pd.DataFrame()
+
+    # Count how many years each company has data for
+    pivot["data_years"] = pivot[year_cols].notna().sum(axis=1)
+    pivot = pivot[pivot["data_years"] >= min_years]
+
+    if only_improving and len(year_cols) >= 2:
+        def _is_improving(row):
+            vals = [row[y] for y in year_cols if pd.notna(row[y])]
+            if len(vals) < 2:
+                return False
+            return all(vals[i] < vals[i + 1] for i in range(len(vals) - 1))
+        pivot = pivot[pivot.apply(_is_improving, axis=1)]
+
+    # Add latest value and YoY change
+    latest_year = year_cols[-1]
+    prev_year = year_cols[-2] if len(year_cols) >= 2 else None
+    pivot["latest"] = pivot[latest_year]
+    if prev_year is not None:
+        pivot["yoy_change"] = pivot[latest_year] - pivot[prev_year]
+    else:
+        pivot["yoy_change"] = None
+
+    # Sort
+    if sort_by == "yoy_change" and "yoy_change" in pivot.columns:
+        pivot = pivot.sort_values("yoy_change", ascending=False, na_position="last")
+    else:
+        pivot = pivot.sort_values("latest", ascending=False, na_position="last")
+
+    return pivot.head(limit).reset_index(drop=True)

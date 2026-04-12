@@ -209,7 +209,6 @@ display = display.rename(columns=col_rename)
 
 st.dataframe(display, use_container_width=True, hide_index=True, height=500)
 
-# ── Download ─────────────────────────────────────────────────────────
 csv_bytes = display.to_csv(index=False).encode("utf-8-sig")
 st.download_button(
     label="CSV 다운로드",
@@ -218,3 +217,108 @@ st.download_button(
     mime="text/csv",
     use_container_width=True,
 )
+
+# ══════════════════════════════════════════════════════════════════════
+# TREND TAB: multi-year metric trends
+# ══════════════════════════════════════════════════════════════════════
+st.divider()
+st.subheader("연도별 추세 분석")
+st.caption("여러 해에 걸친 지표 변화를 추적합니다. 성장률의 방향(로그 추세)이 핵심입니다.")
+
+from krqs.services.screener_service import get_trend_data
+
+tcol1, tcol2, tcol3, tcol4 = st.columns(4)
+
+trend_metric_options = {
+    "OPM": "opm",
+    "GPM": "gpm",
+    "ROE": "roe",
+    "매출": "revenue",
+    "영업이익": "operating_income",
+    "EBITDA Margin": "ebitda_margin",
+    "부채비율": "debt_ratio",
+}
+trend_label = tcol1.selectbox("추세 지표", list(trend_metric_options.keys()), key="trend_metric")
+trend_metric = trend_metric_options[trend_label]
+
+trend_years = tcol2.multiselect(
+    "비교 연도",
+    sorted(available_years, reverse=True),
+    default=sorted(available_years, reverse=True)[:3],
+    key="trend_years",
+)
+only_improving = tcol3.checkbox("연속 상승만", key="trend_improving")
+trend_sort = tcol4.selectbox(
+    "정렬", ["최신값 높은순", "YoY 변화 높은순"], key="trend_sort"
+)
+
+if len(trend_years) < 2:
+    st.info("추세 분석에는 최소 2개 연도가 필요합니다.")
+else:
+    trend_df = get_trend_data(
+        con,
+        years=sorted(trend_years),
+        metric=trend_metric,
+        min_years=2,
+        only_improving=only_improving,
+        sort_by="yoy_change" if "YoY" in trend_sort else "latest",
+        limit=100,
+    )
+
+    if trend_df.empty:
+        st.warning("조건에 맞는 추세 데이터가 없습니다.")
+    else:
+        st.caption(f"{len(trend_df)}개 종목 · {trend_label} 추세")
+
+        # Format the trend table
+        trend_display = trend_df.copy()
+        year_cols = sorted([c for c in trend_display.columns if isinstance(c, int)])
+        is_ratio = trend_metric in ("opm", "gpm", "roe", "debt_ratio", "ebitda_margin")
+
+        for col in year_cols + ["latest"]:
+            if col in trend_display.columns:
+                if is_ratio:
+                    trend_display[col] = pd.to_numeric(trend_display[col], errors="coerce").apply(
+                        lambda v: f"{v:.1%}" if pd.notna(v) else "-"
+                    )
+                else:
+                    trend_display[col] = pd.to_numeric(trend_display[col], errors="coerce").apply(
+                        lambda v: f"{v / BN:,.0f}" if pd.notna(v) else "-"
+                    )
+
+        if "yoy_change" in trend_display.columns:
+            if is_ratio:
+                trend_display["yoy_change"] = pd.to_numeric(
+                    trend_df["yoy_change"], errors="coerce"
+                ).apply(lambda v: f"{v:+.1%}p" if pd.notna(v) else "-")
+            else:
+                trend_display["yoy_change"] = pd.to_numeric(
+                    trend_df["yoy_change"], errors="coerce"
+                ).apply(lambda v: f"{v / BN:+,.0f}" if pd.notna(v) else "-")
+
+        # Rename columns
+        rename_map = {
+            "corp_name": "종목명",
+            "stock_code": "종목코드",
+            "market": "시장",
+            "data_years": "데이터(년)",
+            "latest": f"최신({trend_label})",
+            "yoy_change": "YoY 변화",
+        }
+        for y in year_cols:
+            rename_map[y] = f"FY{y}"
+
+        show_cols = ["corp_name", "stock_code"] + year_cols + ["yoy_change"]
+        show_cols = [c for c in show_cols if c in trend_display.columns]
+        trend_display = trend_display[show_cols].rename(columns=rename_map)
+
+        st.dataframe(trend_display, use_container_width=True, hide_index=True, height=400)
+
+        trend_csv = trend_display.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="추세 CSV 다운로드",
+            data=trend_csv,
+            file_name=f"trend_{trend_metric}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
