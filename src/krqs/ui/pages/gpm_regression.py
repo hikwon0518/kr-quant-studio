@@ -121,12 +121,16 @@ else:
     st.success("충분한 표본")
 
 c5, c6, c7, c8 = st.columns(4)
-c5.metric("Slope p-value", f"{result.slope_pvalue:.4f}")
+_pval = getattr(result, "slope_pvalue", None)
+_ci_lo = getattr(result, "slope_ci_low", None)
+_ci_hi = getattr(result, "slope_ci_high", None)
+_se = getattr(result, "slope_stderr", None)
+c5.metric("Slope p-value", f"{_pval:.4f}" if _pval is not None else "-")
 c6.metric(
     "Slope 95% CI",
-    f"{result.slope_ci_low:+.4f} ~ {result.slope_ci_high:+.4f}",
+    f"{_ci_lo:+.4f} ~ {_ci_hi:+.4f}" if _ci_lo is not None else "-",
 )
-c7.metric("Slope Std Error", f"{result.slope_stderr:.4f}")
+c7.metric("Slope Std Error", f"{_se:.4f}" if _se is not None else "-")
 c8.empty()
 
 st.divider()
