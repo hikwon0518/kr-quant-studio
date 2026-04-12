@@ -8,7 +8,7 @@ import duckdb
 from krqs.config.settings import get_settings
 
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
-_SEED_DIR = Path(__file__).parents[3] / "data" / "seed"
+_SEED_DIR = Path(__file__).parents[4] / "data" / "seed"
 _logger = logging.getLogger(__name__)
 
 
