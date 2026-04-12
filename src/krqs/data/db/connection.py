@@ -8,7 +8,20 @@ import duckdb
 from krqs.config.settings import get_settings
 
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
-_SEED_DIR = Path(__file__).parents[4] / "data" / "seed"
+
+
+def _find_seed_dir() -> Path:
+    """Find seed data directory. Works both in dev (source tree) and deployed (pip install)."""
+    # 1. Current working directory (Streamlit Cloud runs from repo root)
+    cwd_seed = Path.cwd() / "data" / "seed"
+    if cwd_seed.exists():
+        return cwd_seed
+    # 2. Relative to this file (local dev, running from source)
+    for n in range(3, 7):
+        candidate = Path(__file__).parents[n] / "data" / "seed"
+        if candidate.exists():
+            return candidate
+    return cwd_seed  # fallback
 _logger = logging.getLogger(__name__)
 
 
@@ -33,9 +46,10 @@ def initialize_schema(
 def load_seed_data(con: duckdb.DuckDBPyConnection) -> int:
     """Load seed parquet files into empty tables. Returns rows loaded."""
     total = 0
+    seed_dir = _find_seed_dir()
     seeds = {
-        "corps": _SEED_DIR / "seed_corps.parquet",
-        "financials_quarterly": _SEED_DIR / "seed_financials.parquet",
+        "corps": seed_dir / "seed_corps.parquet",
+        "financials_quarterly": seed_dir / "seed_financials.parquet",
     }
     for table, path in seeds.items():
         if not path.exists():
