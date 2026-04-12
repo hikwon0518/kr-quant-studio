@@ -9,10 +9,15 @@ st.set_page_config(
 
 pages = [
     st.Page(
+        "pages/screener.py",
+        title="Sector Screener",
+        icon=":material/search:",
+        default=True,
+    ),
+    st.Page(
         "pages/operating_leverage.py",
         title="Operating Leverage",
         icon=":material/monitoring:",
-        default=True,
     ),
     st.Page(
         "pages/gpm_regression.py",

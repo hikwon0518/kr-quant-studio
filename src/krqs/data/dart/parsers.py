@@ -13,6 +13,12 @@ ACCOUNT_ID_MAP: dict[str, str] = {
     "ifrs-full_ProfitLoss": "net_income",
     "ifrs-full_Assets": "total_assets",
     "ifrs-full_CashAndCashEquivalents": "cash_and_equivalents",
+    "ifrs-full_Equity": "total_equity",
+    "ifrs-full_EquityAttributableToOwnersOfParent": "total_equity",
+    "ifrs-full_Liabilities": "total_liabilities",
+    "ifrs-full_DepreciationAndAmortisationExpense": "depreciation",
+    "ifrs-full_PropertyPlantAndEquipment": "ppe",
+    "ifrs-full_RetainedEarnings": "retained_earnings",
 }
 
 ACCOUNT_NAME_MAP: dict[str, str] = {
@@ -31,6 +37,12 @@ ACCOUNT_NAME_MAP: dict[str, str] = {
     "당기순이익(손실)": "net_income",
     "자산총계": "total_assets",
     "현금및현금성자산": "cash_and_equivalents",
+    "자본총계": "total_equity",
+    "지배기업 소유주지분": "total_equity",
+    "부채총계": "total_liabilities",
+    "감가상각비": "depreciation",
+    "유형자산": "ppe",
+    "이익잉여금": "retained_earnings",
 }
 
 _IS_DIVS = {"IS", "CIS"}
@@ -51,6 +63,11 @@ class ParsedFinancials:
     net_income: int | None
     total_assets: int | None
     cash_and_equivalents: int | None
+    total_equity: int | None
+    total_liabilities: int | None
+    depreciation: int | None
+    ppe: int | None
+    retained_earnings: int | None
 
 
 def _parse_amount(s: Any) -> int | None:
@@ -95,7 +112,8 @@ def parse_fnltt_single_acnt_all(
             continue
         sj_div = (item.get("sj_div") or "").strip()
         # BS 필드는 BS에서만, 손익 필드는 IS/CIS에서만
-        if field in {"total_assets", "cash_and_equivalents"}:
+        if field in {"total_assets", "cash_and_equivalents", "total_equity",
+                     "total_liabilities", "ppe", "retained_earnings"}:
             if sj_div and sj_div not in _BS_DIVS:
                 continue
         elif field in {
@@ -106,6 +124,7 @@ def parse_fnltt_single_acnt_all(
             "operating_income",
             "interest_expense",
             "net_income",
+            "depreciation",
         }:
             if sj_div and sj_div not in _IS_DIVS:
                 continue
@@ -130,4 +149,9 @@ def parse_fnltt_single_acnt_all(
         net_income=extracted.get("net_income"),
         total_assets=extracted.get("total_assets"),
         cash_and_equivalents=extracted.get("cash_and_equivalents"),
+        total_equity=extracted.get("total_equity"),
+        total_liabilities=extracted.get("total_liabilities"),
+        depreciation=extracted.get("depreciation"),
+        ppe=extracted.get("ppe"),
+        retained_earnings=extracted.get("retained_earnings"),
     )

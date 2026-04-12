@@ -79,6 +79,24 @@ def get_by_corp_code(
     }
 
 
+def get_all_listed(
+    con: duckdb.DuckDBPyConnection,
+) -> list[dict[str, str]]:
+    """Return all corps with a non-null stock_code (i.e. listed companies)."""
+    rows = con.execute(
+        """
+        SELECT corp_code, stock_code, corp_name
+        FROM corps
+        WHERE stock_code IS NOT NULL
+        ORDER BY corp_code
+        """,
+    ).fetchall()
+    return [
+        {"corp_code": r[0], "stock_code": r[1], "corp_name": r[2]}
+        for r in rows
+    ]
+
+
 def count_listed(con: duckdb.DuckDBPyConnection) -> int:
     return con.execute(
         "SELECT COUNT(*) FROM corps WHERE stock_code IS NOT NULL"

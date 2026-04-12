@@ -33,6 +33,24 @@ def upsert_financials(
     if parsed.operating_income is not None and parsed.revenue:
         opm = parsed.operating_income / parsed.revenue
 
+    roe: float | None = None
+    if parsed.net_income is not None and parsed.total_equity:
+        roe = parsed.net_income / parsed.total_equity
+
+    debt_ratio: float | None = None
+    if parsed.total_liabilities is not None and parsed.total_assets:
+        debt_ratio = parsed.total_liabilities / parsed.total_assets
+
+    ebitda: int | None = None
+    if parsed.operating_income is not None and parsed.depreciation is not None:
+        ebitda = parsed.operating_income + parsed.depreciation
+    elif parsed.operating_income is not None:
+        ebitda = parsed.operating_income
+
+    ebitda_margin: float | None = None
+    if ebitda is not None and parsed.revenue:
+        ebitda_margin = ebitda / parsed.revenue
+
     con.execute(
         """
         INSERT INTO financials_quarterly (
@@ -41,8 +59,10 @@ def upsert_financials(
             operating_income, interest_expense, net_income,
             total_assets, cash_and_equivalents,
             short_term_investments, total_debt,
-            gpm, opm, revenue_yoy, opm_yoy, source_updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            total_equity, total_liabilities, depreciation, ppe, retained_earnings,
+            gpm, opm, roe, debt_ratio, ebitda, ebitda_margin,
+            revenue_yoy, opm_yoy, source_updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (corp_code, fiscal_year, fiscal_quarter) DO UPDATE SET
             revenue              = excluded.revenue,
             cogs                 = excluded.cogs,
@@ -53,8 +73,17 @@ def upsert_financials(
             net_income           = excluded.net_income,
             total_assets         = excluded.total_assets,
             cash_and_equivalents = excluded.cash_and_equivalents,
+            total_equity         = excluded.total_equity,
+            total_liabilities    = excluded.total_liabilities,
+            depreciation         = excluded.depreciation,
+            ppe                  = excluded.ppe,
+            retained_earnings    = excluded.retained_earnings,
             gpm                  = excluded.gpm,
             opm                  = excluded.opm,
+            roe                  = excluded.roe,
+            debt_ratio           = excluded.debt_ratio,
+            ebitda               = excluded.ebitda,
+            ebitda_margin        = excluded.ebitda_margin,
             source_updated_at    = excluded.source_updated_at
         """,
         [
@@ -73,8 +102,17 @@ def upsert_financials(
             parsed.cash_and_equivalents,
             None,
             None,
+            parsed.total_equity,
+            parsed.total_liabilities,
+            parsed.depreciation,
+            parsed.ppe,
+            parsed.retained_earnings,
             gpm,
             opm,
+            roe,
+            debt_ratio,
+            ebitda,
+            ebitda_margin,
             None,
             None,
             timestamp,

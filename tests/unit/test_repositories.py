@@ -95,6 +95,11 @@ class TestFinancialsRepository:
             net_income=int(op_income * 0.7),
             total_assets=revenue * 2,
             cash_and_equivalents=int(revenue * 0.1),
+            total_equity=int(revenue * 0.8),
+            total_liabilities=int(revenue * 1.2),
+            depreciation=int(revenue * 0.05),
+            ppe=int(revenue * 0.3),
+            retained_earnings=int(revenue * 0.5),
         )
 
     def test_upsert_and_get_latest(self, con):
@@ -152,6 +157,11 @@ class TestFinancialsRepository:
             net_income=None,
             total_assets=None,
             cash_and_equivalents=None,
+            total_equity=None,
+            total_liabilities=None,
+            depreciation=None,
+            ppe=None,
+            retained_earnings=None,
         )
         upsert_financials(con, parsed)
         latest = get_latest_annual(con, "00000000")

@@ -62,6 +62,11 @@ def seeded_con(con) -> duckdb.DuckDBPyConnection:
                 net_income=int(op * 0.7),
                 total_assets=rev * 2,
                 cash_and_equivalents=int(rev * 0.1),
+                total_equity=int(rev * 0.8),
+                total_liabilities=int(rev * 1.2),
+                depreciation=int(rev * 0.05),
+                ppe=int(rev * 0.3),
+                retained_earnings=int(rev * 0.5),
             ),
         )
     return con
