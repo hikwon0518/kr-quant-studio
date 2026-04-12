@@ -141,7 +141,7 @@ with col_chart:
     base = alt.Chart(fitted_df).encode(
         x=alt.X("revenue_bn:Q", title="매출액 (억원)"),
     )
-    band = base.mark_area(opacity=0.2, color="#4c78a8").encode(
+    band = base.mark_area(opacity=0.3, color="#4c78a8").encode(
         y=alt.Y("lower:Q", title="GPM"),
         y2="upper:Q",
     )

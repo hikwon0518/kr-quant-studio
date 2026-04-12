@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from krqs.ui.state import get_db
+
 st.set_page_config(
     page_title="KR Quant Studio",
     page_icon="https://em-content.zobj.net/source/twitter/408/chart-increasing_1f4c8.png",
@@ -62,6 +64,9 @@ st.markdown(
     #MainMenu { visibility: hidden; }
     footer { visibility: hidden; }
 
+    /* Hide anchor icon next to page titles */
+    [data-testid="stHeaderActionElements"] {display: none;}
+
     /* Brand header */
     .brand-header {
         display: flex; align-items: center; gap: 10px;
@@ -83,6 +88,16 @@ with st.sidebar:
         '</div>',
         unsafe_allow_html=True,
     )
+
+    try:
+        con = get_db()
+        row = con.execute(
+            "SELECT MAX(source_updated_at) AS latest FROM financials_quarterly"
+        ).fetchone()
+        if row and row[0]:
+            st.caption(f"최종 데이터: {row[0]}")
+    except Exception:
+        pass
 
 pages = [
     st.Page(

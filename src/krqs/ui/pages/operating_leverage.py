@@ -143,38 +143,38 @@ with st.sidebar:
                 st.rerun()
 
     st.divider()
-    st.header("직전 연도 실적 (억원)")
-    st.number_input("매출액", step=1000.0, min_value=0.0, key="revenue_bn")
-    st.number_input("매출원가", step=1000.0, min_value=0.0, key="cogs_bn")
-    st.number_input("판관비", step=100.0, min_value=0.0, key="sga_bn")
-    st.number_input("이자비용", step=50.0, min_value=0.0, key="interest_bn")
+    with st.expander("기본 입력", expanded=True):
+        st.number_input("매출액", step=1000.0, min_value=0.0, key="revenue_bn")
+        st.number_input("매출원가", step=1000.0, min_value=0.0, key="cogs_bn")
+        st.number_input("판관비", step=100.0, min_value=0.0, key="sga_bn")
+        st.number_input("이자비용", step=50.0, min_value=0.0, key="interest_bn")
 
-    st.header("GPM 밴드")
-    st.slider("GPM Low", 0.0, 0.6, step=0.01, format="%.2f", key="gpm_low")
-    st.slider("GPM Mid", 0.0, 0.6, step=0.01, format="%.2f", key="gpm_mid")
-    st.slider("GPM High", 0.0, 0.6, step=0.01, format="%.2f", key="gpm_high")
+    with st.expander("GPM 밴드", expanded=False):
+        st.slider("GPM Low", 0.0, 0.6, step=0.01, format="%.2f", key="gpm_low")
+        st.slider("GPM Mid", 0.0, 0.6, step=0.01, format="%.2f", key="gpm_mid")
+        st.slider("GPM High", 0.0, 0.6, step=0.01, format="%.2f", key="gpm_high")
 
-    st.header("가정")
-    tax_rate = st.slider(
-        "법인세율", 0.0, 0.5, DEFAULT_TAX_RATE, 0.01, format="%.2f"
-    )
-    sga_growth = st.slider(
-        "판관비 YoY 증가율",
-        -0.10,
-        0.20,
-        DEFAULT_SGA_YOY_GROWTH,
-        0.01,
-        format="%.2f",
-    )
+    with st.expander("가정", expanded=False):
+        tax_rate = st.slider(
+            "법인세율", 0.0, 0.5, DEFAULT_TAX_RATE, 0.01, format="%.2f"
+        )
+        sga_growth = st.slider(
+            "판관비 YoY 증가율",
+            -0.10,
+            0.20,
+            DEFAULT_SGA_YOY_GROWTH,
+            0.01,
+            format="%.2f",
+        )
 
-    st.header("성장률 범위")
-    growth_range = st.slider(
-        "매출 성장률 (%)",
-        min_value=0,
-        max_value=100,
-        value=(10, 70),
-        step=5,
-    )
+    with st.expander("성장률 범위", expanded=False):
+        growth_range = st.slider(
+            "매출 성장률 (%)",
+            min_value=0,
+            max_value=100,
+            value=(10, 70),
+            step=5,
+        )
 
 if not (
     st.session_state["gpm_low"]
@@ -243,7 +243,15 @@ for col in money_cols:
 
 display["growth_rate"] = display["growth_rate"].apply(lambda x: f"{x:+.0%}")
 display["gpm"] = display["gpm"].apply(lambda x: f"{x:.1%}")
+
+# Keep raw OPM for conditional formatting, store formatted version separately
+_opm_raw = display["opm"].copy()
 display["opm"] = display["opm"].apply(lambda x: f"{x:.1%}")
+
+# Replace boolean 적자전환 with colored text labels
+display["is_insolvent"] = display["is_insolvent"].apply(
+    lambda x: "위험" if x else "안전"
+)
 
 display = display.rename(
     columns={
@@ -263,13 +271,47 @@ display = display.rename(
 )
 
 
-def highlight_insolvent(row: pd.Series) -> list[str]:
-    if row["적자전환"]:
-        return ["background-color: #ffe0e0"] * len(row)
-    return [""] * len(row)
+def _opm_bg(opm_val: float) -> str:
+    """Return background-color CSS for an OPM value (as a decimal, e.g. 0.05 = 5%)."""
+    if opm_val < 0:
+        return "background-color: #ffcccc"  # red
+    if opm_val < 0.05:
+        return "background-color: #fff3cd"  # yellow
+    if opm_val < 0.10:
+        return "background-color: #d4edda"  # light green
+    return "background-color: #28a745; color: white"  # dark green
 
 
-styled = display.style.apply(highlight_insolvent, axis=1)
+def _style_row(row: pd.Series) -> list[str]:
+    """Apply row-level and cell-level conditional formatting."""
+    styles = [""] * len(row)
+    col_list = list(row.index)
+
+    # OPM column gradient
+    if "OPM" in col_list:
+        opm_idx = col_list.index("OPM")
+        raw_idx = row.name  # DataFrame integer index
+        styles[opm_idx] = _opm_bg(_opm_raw.iloc[raw_idx])
+
+    # 적자전환 column colored text
+    if "적자전환" in col_list:
+        ins_idx = col_list.index("적자전환")
+        if row["적자전환"] == "위험":
+            styles[ins_idx] = "color: #dc3545; font-weight: bold"  # red
+        else:
+            styles[ins_idx] = "color: #28a745; font-weight: bold"  # green
+
+    # Insolvent row background (keep existing behaviour for full-row tint)
+    if row.get("적자전환") == "위험":
+        base_bg = "background-color: #ffe0e0"
+        styles = [
+            f"{s}; {base_bg}" if s else base_bg for s in styles
+        ]
+
+    return styles
+
+
+styled = display.style.apply(_style_row, axis=1)
 st.dataframe(styled, width="stretch", hide_index=True)
 
 st.divider()
