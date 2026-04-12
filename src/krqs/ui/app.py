@@ -101,6 +101,11 @@ pages = [
         title="GPM Regression",
         icon=":material/scatter_plot:",
     ),
+    st.Page(
+        "pages/guide.py",
+        title="Guide",
+        icon=":material/menu_book:",
+    ),
 ]
 
 st.navigation(pages).run()
