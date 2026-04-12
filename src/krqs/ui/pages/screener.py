@@ -154,17 +154,17 @@ if df.empty:
 
 # Summary metrics from results
 c1, c2, c3, c4, c5 = st.columns(5)
-avg_opm = df["opm"].dropna().mean()
-avg_roe = df["roe"].dropna().mean()
-avg_debt = df["debt_ratio"].dropna().mean()
-total_rev = df["revenue"].dropna().sum()
-median_gpm = df["gpm"].dropna().median()
+_opm = pd.to_numeric(df["opm"], errors="coerce")
+_roe = pd.to_numeric(df["roe"], errors="coerce")
+_debt = pd.to_numeric(df["debt_ratio"], errors="coerce")
+_rev = pd.to_numeric(df["revenue"], errors="coerce")
+_gpm = pd.to_numeric(df["gpm"], errors="coerce")
 
-c1.metric("평균 OPM", f"{avg_opm:.1%}" if pd.notna(avg_opm) else "-")
-c2.metric("평균 ROE", f"{avg_roe:.1%}" if pd.notna(avg_roe) else "-")
-c3.metric("중앙 GPM", f"{median_gpm:.1%}" if pd.notna(median_gpm) else "-")
-c4.metric("평균 부채비율", f"{avg_debt:.1%}" if pd.notna(avg_debt) else "-")
-c5.metric("합산 매출", f"{total_rev / BN:,.0f}억")
+c1.metric("평균 OPM", f"{_opm.mean():.1%}" if _opm.notna().any() else "-")
+c2.metric("평균 ROE", f"{_roe.mean():.1%}" if _roe.notna().any() else "-")
+c3.metric("중앙 GPM", f"{_gpm.median():.1%}" if _gpm.notna().any() else "-")
+c4.metric("평균 부채비율", f"{_debt.mean():.1%}" if _debt.notna().any() else "-")
+c5.metric("합산 매출", f"{_rev.sum() / BN:,.0f}억" if _rev.notna().any() else "-")
 
 st.divider()
 
@@ -177,15 +177,15 @@ money_cols = [
 ]
 for col in money_cols:
     if col in display.columns:
-        display[col] = display[col].apply(
-            lambda v: round(v / BN) if v is not None else None
-        )
+        display[col] = pd.to_numeric(display[col], errors="coerce")
+        display[col] = (display[col] / BN).round(0).astype("Int64")
 
 ratio_cols = ["gpm", "opm", "roe", "debt_ratio", "ebitda_margin"]
 for col in ratio_cols:
     if col in display.columns:
+        display[col] = pd.to_numeric(display[col], errors="coerce")
         display[col] = display[col].apply(
-            lambda v: f"{v:.1%}" if v is not None else "-"
+            lambda v: f"{v:.1%}" if pd.notna(v) else "-"
         )
 
 col_rename = {
