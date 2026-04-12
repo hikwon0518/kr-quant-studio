@@ -120,6 +120,12 @@ footer .hash { font-family: "Consolas", "Courier New", monospace; }
 <div>Parameter hash (SHA-256): <span class="hash">{{ param_hash }}</span></div>
 <div>Generated at: {{ generated_at }}</div>
 {% if data_source %}<div>Data source: {{ data_source }}</div>{% endif %}
+{% if dart_rcept_nos %}
+<div>DART 접수번호: <span class="hash">{{ dart_rcept_nos | join(", ") }}</span></div>
+{% endif %}
+{% if dart_fetch_dates %}
+<div>DART 조회일시: {{ dart_fetch_dates[0] }}{% if dart_fetch_dates | length > 1 %} ~ {{ dart_fetch_dates[-1] }}{% endif %}</div>
+{% endif %}
 <div style="margin-top: 8px;">KR Quant Studio · 이 리포트는 자동 생성되었으며 투자 권유가 아닙니다.</div>
 {% endblock %}
 </footer>

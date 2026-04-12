@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from typing import Any
 
 import duckdb
 
@@ -140,4 +142,47 @@ def get_history(
         "gpm",
         "opm",
     ]
+    return [dict(zip(cols, r)) for r in rows]
+
+
+def upsert_raw_response(
+    con: duckdb.DuckDBPyConnection,
+    corp_code: str,
+    report_code: str,
+    bsns_year: int,
+    endpoint: str,
+    raw_json: dict[str, Any],
+    *,
+    now: datetime | None = None,
+) -> None:
+    timestamp = now or datetime.now(timezone.utc)
+    con.execute(
+        """
+        INSERT INTO dart_raw_responses
+            (corp_code, report_code, bsns_year, endpoint, fetched_at, raw_json)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (corp_code, report_code, bsns_year, endpoint) DO UPDATE SET
+            fetched_at = excluded.fetched_at,
+            raw_json   = excluded.raw_json
+        """,
+        [corp_code, report_code, bsns_year, endpoint, timestamp,
+         json.dumps(raw_json, ensure_ascii=False)],
+    )
+
+
+def get_dart_source_metadata(
+    con: duckdb.DuckDBPyConnection,
+    corp_code: str,
+) -> list[dict[str, Any]]:
+    rows = con.execute(
+        """
+        SELECT bsns_year, report_code, endpoint, fetched_at,
+               raw_json->>'$.list[0].rcept_no' AS rcept_no
+        FROM dart_raw_responses
+        WHERE corp_code = ?
+        ORDER BY bsns_year DESC
+        """,
+        [corp_code],
+    ).fetchall()
+    cols = ["bsns_year", "report_code", "endpoint", "fetched_at", "rcept_no"]
     return [dict(zip(cols, r)) for r in rows]

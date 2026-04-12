@@ -159,5 +159,33 @@ if result.outliers_removed > 0:
     with st.expander(f"제거된 이상치 ({result.outliers_removed}건)"):
         st.dataframe(result.outlier_df, width="stretch")
 
+st.divider()
+st.subheader("리서치 리포트")
+
+if st.button("HTML 리포트 생성", type="primary", width="stretch", key="gpm_report_btn"):
+    from krqs.services.report_service import build_gpm_regression_report
+
+    artifact = build_gpm_regression_report(
+        result,
+        confidence=confidence,
+        remove_outliers=remove_outliers,
+        corp_label=selected.corp_name if selected else None,
+        data_source=data_source_label,
+    )
+
+    st.success(f"리포트 ID: `{artifact.report_id}`")
+    st.caption(f"Parameter hash: `{artifact.param_hash[:16]}…`")
+
+    st.download_button(
+        label="HTML 다운로드",
+        data=artifact.html,
+        file_name=f"{artifact.report_id}.html",
+        mime="text/html",
+        width="stretch",
+    )
+    st.caption(
+        "브라우저로 열어 Ctrl+P → PDF로 저장하면 인쇄 품질 PDF를 얻을 수 있습니다."
+    )
+
 with st.expander("적합 데이터 원본"):
     st.dataframe(result.fitted_df, width="stretch")

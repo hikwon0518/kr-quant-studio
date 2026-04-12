@@ -293,6 +293,8 @@ if st.button("HTML 리포트 생성", type="primary", width="stretch"):
         corp_label=st.session_state["selected_corp_label"] or None,
         fiscal_year=st.session_state["selected_fiscal_year"],
         data_source="DART OpenAPI" if st.session_state["selected_corp_code"] else "수동 입력",
+        corp_code=st.session_state["selected_corp_code"] or None,
+        db_con=con,
     )
 
     st.success(f"리포트 ID: `{artifact.report_id}`")

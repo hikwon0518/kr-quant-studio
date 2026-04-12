@@ -10,7 +10,7 @@ from krqs.data.dart.client import DartAPIError, DartClient
 from krqs.data.dart.corp_code import filter_listed, parse_corp_code_zip
 from krqs.data.dart.parsers import parse_fnltt_single_acnt_all
 from krqs.data.db.repositories.corps import count_listed, upsert_corps
-from krqs.data.db.repositories.financials import upsert_financials
+from krqs.data.db.repositories.financials import upsert_financials, upsert_raw_response
 
 
 @dataclass(frozen=True)
@@ -105,6 +105,16 @@ def _fetch_and_upsert_one_year(
 
     if str(response.get("status")) == "013":
         return YearSyncOutcome(year=year, status="no_data")
+
+    # 원본 JSON 저장 (L3 감사 로그)
+    upsert_raw_response(
+        con,
+        corp_code=corp_code,
+        report_code="11011",
+        bsns_year=year,
+        endpoint="fnlttSinglAcntAll",
+        raw_json=response,
+    )
 
     parsed = parse_fnltt_single_acnt_all(response)
     if parsed is None:
