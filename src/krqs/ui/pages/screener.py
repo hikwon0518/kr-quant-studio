@@ -322,3 +322,89 @@ else:
             mime="text/csv",
             use_container_width=True,
         )
+
+# ══════════════════════════════════════════════════════════════════════
+# GROWTH ANALYSIS: CAGR, acceleration, earnings growth
+# ══════════════════════════════════════════════════════════════════════
+st.divider()
+st.subheader("성장 분석")
+st.caption(
+    "CAGR(복합성장률), 성장 가속도(이계도함수), 이익 성장률(PEG의 G)을 계산합니다. "
+    "로그 추세가 돌파하면 something special."
+)
+
+from krqs.services.screener_service import get_growth_analysis
+
+gcol1, gcol2, gcol3 = st.columns(3)
+growth_years = gcol1.multiselect(
+    "분석 기간",
+    sorted(available_years, reverse=True),
+    default=sorted(available_years, reverse=True)[:4],
+    key="growth_years",
+)
+growth_sort_options = {
+    "매출 CAGR": "rev_cagr",
+    "영업이익 CAGR": "op_cagr",
+    "이익 성장률": "earnings_growth",
+    "성장 가속도": "accel",
+    "최신 매출": "latest_rev",
+    "최신 OPM": "latest_opm",
+}
+growth_sort_label = gcol2.selectbox("정렬", list(growth_sort_options.keys()), key="growth_sort")
+growth_limit = gcol3.number_input("표시 종목 수", 10, 500, 100, 10, key="growth_limit")
+
+if len(growth_years) < 3:
+    st.info("성장 분석에는 최소 3개 연도가 필요합니다.")
+else:
+    growth_df = get_growth_analysis(
+        con,
+        years=sorted(growth_years),
+        min_years=3,
+        sort_by=growth_sort_options[growth_sort_label],
+        limit=growth_limit,
+    )
+
+    if growth_df.empty:
+        st.warning("3개년 이상 데이터가 있는 종목이 없습니다.")
+    else:
+        st.caption(f"{len(growth_df)}개 종목 · {growth_sort_label} 순")
+
+        gd = growth_df.copy()
+        gd["latest_rev"] = pd.to_numeric(gd["latest_rev"], errors="coerce").apply(
+            lambda v: f"{v / BN:,.0f}" if pd.notna(v) else "-"
+        )
+        gd["latest_opm"] = pd.to_numeric(gd["latest_opm"], errors="coerce").apply(
+            lambda v: f"{v:.1%}" if pd.notna(v) else "-"
+        )
+        for col in ["rev_cagr", "op_cagr", "earnings_growth"]:
+            gd[col] = pd.to_numeric(gd[col], errors="coerce").apply(
+                lambda v: f"{v:+.1%}" if pd.notna(v) else "-"
+            )
+        gd["accel"] = pd.to_numeric(gd["accel"], errors="coerce").apply(
+            lambda v: f"{v:+.1%}p" if pd.notna(v) else "-"
+        )
+
+        gd = gd.rename(columns={
+            "corp_name": "종목명",
+            "stock_code": "코드",
+            "market": "시장",
+            "years": "기간",
+            "data_points": "N",
+            "latest_rev": "최신매출(억)",
+            "latest_opm": "최신OPM",
+            "rev_cagr": "매출CAGR",
+            "op_cagr": "OP CAGR",
+            "earnings_growth": "이익성장률",
+            "accel": "성장가속도",
+        })
+
+        st.dataframe(gd, use_container_width=True, hide_index=True, height=400)
+
+        growth_csv = gd.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="성장분석 CSV 다운로드",
+            data=growth_csv,
+            file_name="growth_analysis.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )

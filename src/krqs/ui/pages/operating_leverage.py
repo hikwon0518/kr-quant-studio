@@ -11,10 +11,14 @@ from krqs.domain.operating_leverage import (
     GpmBand,
     build_scenario_matrix,
 )
-from krqs.services.data_sync_service import (
-    sync_corp_codes,
-    sync_corp_financials,
-)
+try:
+    from krqs.services.data_sync_service import (
+        sync_corp_codes,
+        sync_corp_financials,
+    )
+    _SYNC_AVAILABLE = True
+except ImportError:
+    _SYNC_AVAILABLE = False
 from krqs.services.simulator_service import (
     load_corp_baseline,
     search_corporations,
@@ -31,12 +35,14 @@ st.caption("매출 성장률 × GPM 밴드 시나리오 매트릭스")
 
 with st.sidebar:
     with st.expander("데이터 동기화", expanded=(listed_count == 0)):
-        if listed_count == 0:
+        if not _SYNC_AVAILABLE:
+            st.info("DART 동기화 기능은 로컬 환경에서만 사용 가능합니다.")
+        elif listed_count == 0:
             st.warning("DB가 비어있습니다. 먼저 기업코드를 갱신하세요.")
         else:
             st.caption(f"DB 내 상장기업 {listed_count:,}개")
 
-        if st.button("기업코드 갱신 (DART)", width="stretch"):
+        if _SYNC_AVAILABLE and st.button("기업코드 갱신 (DART)", width="stretch"):
             with st.status("DART에서 기업코드 다운로드 중...", expanded=True) as status:
                 try:
                     result = sync_corp_codes(con)
@@ -75,7 +81,7 @@ with st.sidebar:
         selected = matches[selected_idx]
 
         sync_col, load_col = st.columns(2)
-        if sync_col.button("재무 동기화", width="stretch", help="DART에서 최근 5년치 재무 받아오기"):
+        if _SYNC_AVAILABLE and sync_col.button("재무 동기화", width="stretch", help="DART에서 최근 5년치 재무 받아오기"):
             with st.status(
                 f"{selected.corp_name} 재무 동기화 중...", expanded=True
             ) as status:

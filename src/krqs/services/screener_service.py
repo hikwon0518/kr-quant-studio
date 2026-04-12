@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 from typing import Sequence
 
 import duckdb
+import numpy as np
 import pandas as pd
 
 
@@ -201,3 +203,112 @@ def get_trend_data(
         pivot = pivot.sort_values("latest", ascending=False, na_position="last")
 
     return pivot.head(limit).reset_index(drop=True)
+
+
+def get_growth_analysis(
+    con: duckdb.DuckDBPyConnection,
+    *,
+    years: Sequence[int] | None = None,
+    min_years: int = 3,
+    sort_by: str = "rev_cagr",
+    limit: int = 200,
+) -> pd.DataFrame:
+    """Compute CAGR, growth acceleration, and earnings growth for all companies.
+
+    Returns DataFrame with: corp info, revenue CAGR, OP CAGR, growth acceleration,
+    earnings growth rate (the 'G' in PEG).
+    """
+    if years is None:
+        years = get_available_years(con)
+    years = sorted(years)
+    if len(years) < min_years:
+        return pd.DataFrame()
+
+    placeholders = ", ".join("?" for _ in years)
+    sql = f"""
+        SELECT c.corp_code, c.corp_name, c.stock_code, c.market,
+               f.fiscal_year, f.revenue, f.operating_income, f.net_income, f.opm
+        FROM financials_quarterly f
+        JOIN corps c ON c.corp_code = f.corp_code
+        WHERE f.fiscal_quarter = 4
+          AND f.fiscal_year IN ({placeholders})
+          AND c.stock_code IS NOT NULL
+          AND f.revenue IS NOT NULL
+          AND f.revenue > 0
+    """
+    df = con.execute(sql, list(years)).fetchdf()
+    if df.empty:
+        return pd.DataFrame()
+
+    results = []
+    for (corp_code, corp_name, stock_code, market), grp in df.groupby(
+        ["corp_code", "corp_name", "stock_code", "market"]
+    ):
+        grp = grp.sort_values("fiscal_year")
+        if len(grp) < min_years:
+            continue
+
+        revs = grp["revenue"].to_numpy(dtype=float)
+        ops = grp["operating_income"].to_numpy(dtype=float)
+        nets = grp["net_income"].to_numpy(dtype=float)
+        opms = grp["opm"].to_numpy(dtype=float)
+        yrs = grp["fiscal_year"].to_numpy()
+        n = len(yrs)
+        span = int(yrs[-1] - yrs[0])
+        if span == 0:
+            continue
+
+        # 1. CAGR
+        rev_cagr = (revs[-1] / revs[0]) ** (1.0 / span) - 1 if revs[0] > 0 else None
+        op_cagr = None
+        if ops[0] > 0 and ops[-1] > 0:
+            op_cagr = (ops[-1] / ops[0]) ** (1.0 / span) - 1
+
+        # 2. Growth Acceleration (이계도함수)
+        #    Compare recent growth rate vs earlier growth rate.
+        #    If recent > earlier, acceleration is positive.
+        accel = None
+        if n >= 3:
+            yoy_rates = []
+            for i in range(1, n):
+                if revs[i - 1] > 0:
+                    yoy_rates.append(revs[i] / revs[i - 1] - 1)
+            if len(yoy_rates) >= 2:
+                mid = len(yoy_rates) // 2
+                early_avg = np.mean(yoy_rates[:mid])
+                late_avg = np.mean(yoy_rates[mid:])
+                accel = late_avg - early_avg
+
+        # 3. Earnings Growth Rate (PEG의 'G')
+        #    CAGR of net_income (for companies with positive earnings both ends)
+        earnings_growth = None
+        if nets[0] > 0 and nets[-1] > 0:
+            earnings_growth = (nets[-1] / nets[0]) ** (1.0 / span) - 1
+
+        # Latest values
+        latest_rev = revs[-1]
+        latest_opm = opms[-1] if pd.notna(opms[-1]) else None
+
+        results.append({
+            "corp_name": corp_name,
+            "stock_code": stock_code,
+            "market": market,
+            "years": f"{int(yrs[0])}-{int(yrs[-1])}",
+            "data_points": n,
+            "latest_rev": latest_rev,
+            "latest_opm": latest_opm,
+            "rev_cagr": rev_cagr,
+            "op_cagr": op_cagr,
+            "earnings_growth": earnings_growth,
+            "accel": accel,
+        })
+
+    out = pd.DataFrame(results)
+    if out.empty:
+        return out
+
+    valid_sorts = {"rev_cagr", "op_cagr", "earnings_growth", "accel", "latest_rev", "latest_opm"}
+    if sort_by not in valid_sorts:
+        sort_by = "rev_cagr"
+    out = out.sort_values(sort_by, ascending=False, na_position="last")
+    return out.head(limit).reset_index(drop=True)
