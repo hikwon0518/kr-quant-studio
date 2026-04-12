@@ -20,6 +20,10 @@ class RegressionResult:
     predicted_gpm_high: float
     fitted_df: pd.DataFrame
     outlier_df: pd.DataFrame
+    slope_pvalue: float = 1.0
+    slope_ci_low: float = 0.0
+    slope_ci_high: float = 0.0
+    slope_stderr: float = 0.0
 
 
 def remove_outliers_iqr(
@@ -75,6 +79,18 @@ def fit_gpm_vs_revenue(
     r_squared = float(model.rsquared)
 
     alpha = 1.0 - confidence
+    if len(params) > 1:
+        slope_pvalue = float(model.pvalues[1])
+        slope_ci = model.conf_int(alpha=alpha)
+        slope_ci_low = float(slope_ci[1, 0])
+        slope_ci_high = float(slope_ci[1, 1])
+        slope_stderr = float(model.bse[1])
+    else:
+        slope_pvalue = 1.0
+        slope_ci_low = 0.0
+        slope_ci_high = 0.0
+        slope_stderr = 0.0
+
     pred = model.get_prediction(X).summary_frame(alpha=alpha)
     fitted_df = df.copy()
     fitted_df["fitted"] = pred["mean"].to_numpy()
@@ -103,4 +119,8 @@ def fit_gpm_vs_revenue(
         predicted_gpm_high=pred_high,
         fitted_df=fitted_df,
         outlier_df=outlier_df,
+        slope_pvalue=slope_pvalue,
+        slope_ci_low=slope_ci_low,
+        slope_ci_high=slope_ci_high,
+        slope_stderr=slope_stderr,
     )

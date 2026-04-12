@@ -60,16 +60,16 @@ if selected and not manual_mode:
 
 if manual_mode:
     st.subheader("과거 데이터 입력")
-    st.caption("revenue는 원 단위, gpm은 0~1 사이 비율로 입력")
+    st.caption("revenue는 억원 단위로 입력, gpm은 0~1 사이 비율로 입력")
     default_data = pd.DataFrame(
         {
             "fiscal_year": [2018, 2019, 2020, 2021, 2022],
-            "revenue": [
-                1_000_000_000_000,
-                1_500_000_000_000,
-                2_000_000_000_000,
-                3_000_000_000_000,
-                4_000_000_000_000,
+            "revenue": [  # 억원 단위 (e.g. 10000 = 1조)
+                10_000,
+                15_000,
+                20_000,
+                30_000,
+                40_000,
             ],
             "gpm": [0.15, 0.18, 0.22, 0.25, 0.28],
         }
@@ -80,6 +80,9 @@ if manual_mode:
         width="stretch",
         key="gpm_manual_editor",
     )
+    # 억원 → 원 변환: domain 함수는 원(won) 단위를 기대
+    edited = edited.copy()
+    edited["revenue"] = edited["revenue"] * BN
     history_df = edited
     data_source_label = "수동 입력"
 
@@ -110,6 +113,22 @@ c3.metric("R²", f"{result.r_squared:.3f}")
 slope_per_trillion = result.slope * 1_000_000_000_000
 c4.metric("Slope (매출 1조당)", f"{slope_per_trillion:+.4f}")
 
+if result.observations < 5:
+    st.error("표본 5개 미만 — 통계적으로 무의미합니다")
+elif result.observations < 8:
+    st.warning("표본 8개 미만 — 참고용으로만 사용하세요")
+else:
+    st.success("충분한 표본")
+
+c5, c6, c7, c8 = st.columns(4)
+c5.metric("Slope p-value", f"{result.slope_pvalue:.4f}")
+c6.metric(
+    "Slope 95% CI",
+    f"{result.slope_ci_low:+.4f} ~ {result.slope_ci_high:+.4f}",
+)
+c7.metric("Slope Std Error", f"{result.slope_stderr:.4f}")
+c8.empty()
+
 st.divider()
 
 col_chart, col_band = st.columns([3, 1])
@@ -139,9 +158,11 @@ with col_chart:
 
 with col_band:
     st.subheader("제안 GPM 밴드")
+    pred_half_width = (result.predicted_gpm_high - result.predicted_gpm_low) / 2
     st.metric("Low", f"{result.predicted_gpm_low:.1%}")
     st.metric("Mid", f"{result.predicted_gpm_mid:.1%}")
     st.metric("High", f"{result.predicted_gpm_high:.1%}")
+    st.caption(f"예측 구간 폭: ± {pred_half_width * 100:.1f}%p")
 
     st.caption("이 밴드는 가장 높은 매출 데이터 기준 예측 신뢰구간입니다.")
 

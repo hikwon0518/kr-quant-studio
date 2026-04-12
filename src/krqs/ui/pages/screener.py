@@ -22,7 +22,7 @@ with st.sidebar:
 
     with st.expander("수익성 필터", expanded=True):
         opm_range = st.slider(
-            "OPM (%)", 0.0, 100.0, (0.0, 100.0), 1.0,
+            "OPM (%)", 0.0, 100.0, (10.0, 100.0), 1.0,
             format="%.0f%%", key="filter_opm",
         )
         min_gpm = st.slider(
@@ -72,7 +72,7 @@ with st.sidebar:
     ) == "내림차순"
 
     limit = st.number_input(
-        "최대 표시 종목 수", min_value=10, max_value=1000, value=100, step=10
+        "최대 표시 종목 수", min_value=10, max_value=1000, value=30, step=10
     )
 
     run_search = st.button("검색", type="primary", use_container_width=True)
@@ -108,7 +108,6 @@ if "screener_ran" not in st.session_state:
     run_search = True
 
 if not run_search:
-    st.info("사이드바에서 필터를 설정한 뒤 **검색** 버튼을 누르세요.")
     st.stop()
 
 # ── Query ────────────────────────────────────────────────────────────
@@ -139,7 +138,11 @@ if active_filters:
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
 # ── KPI summary cards ───────────────────────────────────────────────
-st.subheader(f"{len(df):,}개 종목 발견  ·  FY{fiscal_year}")
+if active_filters:
+    filter_summary = ", ".join(active_filters)
+    st.subheader(f"{len(df):,}개 종목 발견  ·  FY{fiscal_year}  ·  {filter_summary}")
+else:
+    st.subheader(f"OPM 상위 {limit} (FY{fiscal_year})")
 
 if df.empty:
     st.markdown(
