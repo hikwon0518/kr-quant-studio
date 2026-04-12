@@ -50,6 +50,7 @@ def load_seed_data(con: duckdb.DuckDBPyConnection) -> int:
     seeds = {
         "corps": seed_dir / "seed_corps.parquet",
         "financials_quarterly": seed_dir / "seed_financials.parquet",
+        "price_daily": seed_dir / "seed_prices.parquet",
     }
     for table, path in seeds.items():
         if not path.exists():
