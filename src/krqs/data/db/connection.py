@@ -52,17 +52,23 @@ def load_seed_data(con: duckdb.DuckDBPyConnection) -> int:
         "financials_quarterly": seed_dir / "seed_financials.parquet",
         "price_daily": seed_dir / "seed_prices.parquet",
     }
+    _logger.info("Seed directory: %s (exists=%s)", seed_dir, seed_dir.exists())
     for table, path in seeds.items():
         if not path.exists():
+            _logger.info("Seed file not found: %s", path)
             continue
-        count = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-        if count > 0:
-            continue
-        ppath = str(path).replace("\\", "/")
-        con.execute(
-            f"INSERT INTO {table} BY NAME SELECT * FROM read_parquet('{ppath}')"
-        )
-        rows = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
-        _logger.info("Loaded %d rows into %s from seed", rows, table)
-        total += rows
+        try:
+            count = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            if count > 0:
+                _logger.info("Table %s already has %d rows, skipping seed", table, count)
+                continue
+            ppath = str(path).replace("\\", "/")
+            con.execute(
+                f"INSERT INTO {table} BY NAME SELECT * FROM read_parquet('{ppath}')"
+            )
+            rows = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            _logger.info("Loaded %d rows into %s from seed", rows, table)
+            total += rows
+        except Exception as e:
+            _logger.error("Failed to load seed for %s: %s", table, e)
     return total

@@ -24,6 +24,16 @@ with st.sidebar:
         st.warning("DB에 재무 데이터가 없습니다. 먼저 데이터를 동기화하세요.")
         st.stop()
 
+    try:
+        price_count = con.execute("SELECT count(*) FROM price_daily").fetchone()[0]
+    except Exception:
+        price_count = 0
+    if price_count == 0:
+        st.info(
+            "가격 데이터가 아직 없습니다. 가격 없이 성장 분석만 표시합니다.\n\n"
+            "로컬 환경에서 `python scripts/sync_prices.py`로 동기화하세요."
+        )
+
     fiscal_year = st.selectbox(
         "회계연도", available_years, index=0, key="gv_fiscal_year",
     )
