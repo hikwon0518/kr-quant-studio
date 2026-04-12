@@ -58,9 +58,9 @@ def load_seed_data(con: duckdb.DuckDBPyConnection) -> int:
         if count > 0:
             continue
         ppath = str(path).replace("\\", "/")
-        inserted = con.execute(
-            f"INSERT INTO {table} SELECT * FROM read_parquet('{ppath}')"
-        ).fetchone()
+        con.execute(
+            f"INSERT INTO {table} BY NAME SELECT * FROM read_parquet('{ppath}')"
+        )
         rows = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
         _logger.info("Loaded %d rows into %s from seed", rows, table)
         total += rows
