@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     snapshots_dir: Path = Field(
         default=Path("data/snapshots"), alias="KRQS_SNAPSHOTS_DIR"
     )
+    fsc_api_key: str = Field(default="", alias="FSC_API_KEY")
+    fsc_api_base_url: str = Field(
+        default="https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService",
+        alias="FSC_API_BASE_URL",
+    )
 
 
 def get_settings() -> Settings:

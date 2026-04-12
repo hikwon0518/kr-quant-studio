@@ -56,6 +56,22 @@ CREATE TABLE IF NOT EXISTS financials_quarterly (
 
 CREATE INDEX IF NOT EXISTS idx_fin_year ON financials_quarterly(fiscal_year);
 
+CREATE TABLE IF NOT EXISTS price_daily (
+    stock_code  VARCHAR NOT NULL,
+    trade_date  DATE    NOT NULL,
+    open        BIGINT,
+    high        BIGINT,
+    low         BIGINT,
+    close       BIGINT  NOT NULL,
+    volume      BIGINT,
+    marcap      BIGINT,
+    shares_out  BIGINT,
+    PRIMARY KEY (stock_code, trade_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_price_date  ON price_daily(trade_date);
+CREATE INDEX IF NOT EXISTS idx_price_stock ON price_daily(stock_code);
+
 CREATE TABLE IF NOT EXISTS screener_signals (
     corp_code   VARCHAR NOT NULL,
     signal_type VARCHAR NOT NULL,
