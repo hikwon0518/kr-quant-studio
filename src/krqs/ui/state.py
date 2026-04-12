@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from krqs.data.db.connection import get_connection, initialize_schema
+from krqs.data.db.connection import get_connection, initialize_schema, load_seed_data
 
 BN = 100_000_000
 
@@ -11,6 +11,7 @@ BN = 100_000_000
 def get_db():
     con = get_connection()
     initialize_schema(con)
+    load_seed_data(con)
     return con
 
 

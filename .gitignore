@@ -14,6 +14,7 @@ data/*.duckdb
 data/*.duckdb.wal
 data/snapshots/
 data/corp_codes/
+!data/seed/
 
 .vscode/
 .idea/
