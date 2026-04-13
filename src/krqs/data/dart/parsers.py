@@ -21,6 +21,18 @@ ACCOUNT_ID_MAP: dict[str, str] = {
     "ifrs-full_RetainedEarnings": "retained_earnings",
 }
 
+# Depreciation may appear in CF (cash flow) section with different account IDs.
+# We collect these separately and use them as a fallback.
+_CF_DEPRECIATION_IDS: dict[str, str] = {
+    "ifrs-full_AdjustmentsForDepreciationExpense": "cf_depreciation",
+    "ifrs-full_AdjustmentsForDepreciationAndAmortisationExpense": "cf_depreciation",
+    "ifrs-full_AdjustmentsForAmortisationExpense": "cf_amortisation",
+    "dart_DepreciationExpenseSellingGeneralAdministrativeExpenses": "is_depreciation_sga",
+    "dart_AmortisationExpenseSellingGeneralAdministrativeExpenses": "is_amortisation_sga",
+    "dart_TotalDepreciationExpense": "cf_depreciation",
+    "dart_DepreciationExpenseCostOfSales": "is_depreciation_cogs",
+}
+
 ACCOUNT_NAME_MAP: dict[str, str] = {
     "매출액": "revenue",
     "수익(매출액)": "revenue",
@@ -47,6 +59,7 @@ ACCOUNT_NAME_MAP: dict[str, str] = {
 
 _IS_DIVS = {"IS", "CIS"}
 _BS_DIVS = {"BS"}
+_CF_DIVS = {"CF"}
 
 
 @dataclass(frozen=True)
@@ -105,12 +118,21 @@ def parse_fnltt_single_acnt_all(
     reprt_code = (items[0].get("reprt_code") or "").strip()
 
     extracted: dict[str, int | None] = {}
+    cf_dep_parts: dict[str, int | None] = {}  # collect CF depreciation components
 
     for item in items:
+        sj_div = (item.get("sj_div") or "").strip()
+        account_id = (item.get("account_id") or "").strip()
+
+        # Check for CF depreciation entries (fallback for IS depreciation)
+        if account_id in _CF_DEPRECIATION_IDS:
+            cf_key = _CF_DEPRECIATION_IDS[account_id]
+            if cf_key not in cf_dep_parts:
+                cf_dep_parts[cf_key] = _parse_amount(item.get("thstrm_amount"))
+
         field = _field_for_item(item)
         if not field or field in extracted:
             continue
-        sj_div = (item.get("sj_div") or "").strip()
         # BS 필드는 BS에서만, 손익 필드는 IS/CIS에서만
         if field in {"total_assets", "cash_and_equivalents", "total_equity",
                      "total_liabilities", "ppe", "retained_earnings"}:
@@ -135,6 +157,27 @@ def parse_fnltt_single_acnt_all(
         cogs = extracted.get("cogs")
         if rev is not None and cogs is not None:
             extracted["gross_profit"] = rev - cogs
+
+    # Fallback: derive depreciation from CF section if not found in IS
+    if extracted.get("depreciation") is None and cf_dep_parts:
+        # Prefer cf_depreciation (total D&A from CF adjustments)
+        if cf_dep_parts.get("cf_depreciation") is not None:
+            extracted["depreciation"] = cf_dep_parts["cf_depreciation"]
+            # Add amortisation if available
+            if cf_dep_parts.get("cf_amortisation") is not None:
+                extracted["depreciation"] += cf_dep_parts["cf_amortisation"]
+        else:
+            # Sum IS-level SGA/COGS depreciation components
+            total = 0
+            found = False
+            for key in ("is_depreciation_sga", "is_depreciation_cogs",
+                        "is_amortisation_sga"):
+                val = cf_dep_parts.get(key)
+                if val is not None:
+                    total += val
+                    found = True
+            if found:
+                extracted["depreciation"] = total
 
     return ParsedFinancials(
         corp_code=corp_code,
