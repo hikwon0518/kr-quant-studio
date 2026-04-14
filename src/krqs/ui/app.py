@@ -101,38 +101,38 @@ with st.sidebar:
 
 pages = [
     st.Page(
-        "pages/growth_valuation.py",
+        "views/growth_valuation.py",
         title="Growth x Valuation",
         icon=":material/trending_up:",
         default=True,
     ),
     st.Page(
-        "pages/screener.py",
+        "views/screener.py",
         title="Sector Screener",
         icon=":material/search:",
     ),
     st.Page(
-        "pages/operating_leverage.py",
+        "views/operating_leverage.py",
         title="Operating Leverage",
         icon=":material/monitoring:",
     ),
     st.Page(
-        "pages/gpm_regression.py",
+        "views/gpm_regression.py",
         title="GPM Regression",
         icon=":material/scatter_plot:",
     ),
     st.Page(
-        "pages/log_analysis.py",
+        "views/log_analysis.py",
         title="Log-Scale Analysis",
         icon=":material/show_chart:",
     ),
     st.Page(
-        "pages/sanity_check.py",
+        "views/sanity_check.py",
         title="Sanity Check",
         icon=":material/fact_check:",
     ),
     st.Page(
-        "pages/guide.py",
+        "views/guide.py",
         title="Guide",
         icon=":material/menu_book:",
     ),
