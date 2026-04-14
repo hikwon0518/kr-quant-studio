@@ -130,7 +130,7 @@ def fix_prices_marcap() -> None:
 # ---------------------------------------------------------------------------
 # 3. Fix financials: multi-year + depreciation from DART
 # ---------------------------------------------------------------------------
-def fix_financials(limit: int | None = None) -> None:
+def fix_financials(limit: int | None = None, rate: float = 1.5) -> None:
     print()
     print("=" * 60)
     print("[3/3] Fixing financials: multi-year data from DART")
@@ -146,6 +146,7 @@ def fix_financials(limit: int | None = None) -> None:
     listed = corps[corps.stock_code.notna()].copy()
     print(f"  Listed corps: {len(listed)}")
     print(f"  Current financials: {len(fin)} rows, {fin.corp_code.nunique()} corps")
+    print(f"  Rate limit: {rate} req/sec")
 
     # Target years: FY2021 through FY2025
     target_years = [2021, 2022, 2023, 2024, 2025]
@@ -166,33 +167,36 @@ def fix_financials(limit: int | None = None) -> None:
                 missing_pairs.append((cc, yr))
 
     print(f"  Missing (corp, year) pairs to fetch: {len(missing_pairs)}")
-    if not missing_pairs:
-        print("  Nothing to fetch!")
-        return
 
     # Also re-fetch existing rows where depreciation is NULL
     refetch_pairs = []
+    existing_missing = set(missing_pairs)
     for _, row in fin[fin.depreciation.isna()].iterrows():
         pair = (row.corp_code, int(row.fiscal_year))
-        if pair not in [(cc, yr) for cc, yr in missing_pairs]:
+        if pair not in existing_missing:
             refetch_pairs.append(pair)
 
     print(f"  Re-fetch for depreciation: {len(refetch_pairs)} pairs")
 
     all_fetch = missing_pairs + refetch_pairs
     total = len(all_fetch)
+    if not all_fetch:
+        print("  Nothing to fetch!")
+        return
 
     # Fetch from DART
     new_rows = []
     synced = 0
     no_data = 0
     failed = 0
+    consecutive_errors = 0
+    SAVE_INTERVAL = 500  # intermediate save every N successful fetches
     start = time.monotonic()
 
     # Build a quick corp_code -> corp_name map for logging
     name_map = dict(zip(corps.corp_code, corps.corp_name))
 
-    with DartClient() as client:
+    with DartClient(rate_limit_per_sec=rate) as client:
         for idx, (corp_code, year) in enumerate(all_fetch):
             seq = idx + 1
             try:
@@ -202,15 +206,29 @@ def fix_financials(limit: int | None = None) -> None:
                     reprt_code="11011",
                     fs_div="CFS",
                 )
+                consecutive_errors = 0
             except DartAPIError as e:
                 failed += 1
+                consecutive_errors += 1
                 if failed <= 10:
                     print(f"  [{seq}/{total}] FAIL {name_map.get(corp_code, corp_code)} {year}: {e}")
+                if consecutive_errors >= 5:
+                    wait = min(30 * consecutive_errors, 300)
+                    print(f"  *** {consecutive_errors} consecutive errors, cooling down {wait}s ***")
+                    time.sleep(wait)
                 continue
             except Exception as e:
                 failed += 1
-                if failed <= 10:
+                consecutive_errors += 1
+                if failed <= 10 or consecutive_errors == 1:
                     print(f"  [{seq}/{total}] ERR  {name_map.get(corp_code, corp_code)} {year}: {e}")
+                if consecutive_errors >= 5:
+                    wait = min(30 * consecutive_errors, 300)
+                    print(f"  *** {consecutive_errors} consecutive errors, cooling down {wait}s ***")
+                    time.sleep(wait)
+                if consecutive_errors >= 20:
+                    print(f"  *** Too many consecutive errors ({consecutive_errors}), stopping ***")
+                    break
                 continue
 
             if str(response.get("status")) == "013":
@@ -295,42 +313,50 @@ def fix_financials(limit: int | None = None) -> None:
                     f"rev={rev_bn:,.0f}B {dep_str}  (ETA {eta_str})"
                 )
 
+            # Intermediate save every SAVE_INTERVAL successful fetches
+            if synced > 0 and synced % SAVE_INTERVAL == 0:
+                print(f"  *** Intermediate save at {synced} synced rows ***")
+                _save_financials(fin, new_rows)
+
     elapsed = time.monotonic() - start
     print(f"\n  DART fetch done: synced={synced}, no_data={no_data}, failed={failed}, time={_fmt_duration(elapsed)}")
 
     if new_rows:
-        new_df = pd.DataFrame(new_rows)
-        # Merge with existing: new rows override existing for same (corp_code, fiscal_year, fiscal_quarter)
-        key_cols = ["corp_code", "fiscal_year", "fiscal_quarter"]
-
-        # Remove existing rows that will be replaced
-        new_keys = set(zip(new_df.corp_code, new_df.fiscal_year, new_df.fiscal_quarter))
-        keep_mask = ~pd.Series(
-            list(zip(fin.corp_code, fin.fiscal_year, fin.fiscal_quarter))
-        ).apply(lambda x: x in new_keys)
-        fin_kept = fin[keep_mask.values]
-
-        # Ensure column alignment
-        all_cols = list(fin.columns)
-        for col in all_cols:
-            if col not in new_df.columns:
-                new_df[col] = None
-        new_df = new_df[all_cols]
-
-        merged = pd.concat([fin_kept, new_df], ignore_index=True)
-        merged = merged.sort_values(["corp_code", "fiscal_year"]).reset_index(drop=True)
-
-        print(f"  Before: {len(fin)} rows, After: {len(merged)} rows")
-        print(f"  Depreciation non-null: {merged.depreciation.notna().sum()}/{len(merged)}")
-        print(f"  Unique corps: {merged.corp_code.nunique()}")
-        year_counts = merged.groupby("corp_code").fiscal_year.nunique()
-        print(f"  Corps with 2+ years: {(year_counts >= 2).sum()}")
-        print(f"  Corps with 3+ years: {(year_counts >= 3).sum()}")
-
-        merged.to_parquet(SEED_DIR / "seed_financials.parquet", index=False)
-        print(f"  Saved seed_financials.parquet")
+        _save_financials(fin, new_rows)
     else:
         print("  No new rows to add")
+
+
+def _save_financials(base_fin: pd.DataFrame, new_rows: list[dict]) -> None:
+    """Merge new rows into base financials and save to parquet."""
+    new_df = pd.DataFrame(new_rows)
+
+    # Remove existing rows that will be replaced
+    new_keys = set(zip(new_df.corp_code, new_df.fiscal_year, new_df.fiscal_quarter))
+    keep_mask = ~pd.Series(
+        list(zip(base_fin.corp_code, base_fin.fiscal_year, base_fin.fiscal_quarter))
+    ).apply(lambda x: x in new_keys)
+    fin_kept = base_fin[keep_mask.values]
+
+    # Ensure column alignment
+    all_cols = list(base_fin.columns)
+    for col in all_cols:
+        if col not in new_df.columns:
+            new_df[col] = None
+    new_df = new_df[all_cols]
+
+    merged = pd.concat([fin_kept, new_df], ignore_index=True)
+    merged = merged.sort_values(["corp_code", "fiscal_year"]).reset_index(drop=True)
+
+    print(f"  Before: {len(base_fin)} rows, After: {len(merged)} rows")
+    print(f"  Depreciation non-null: {merged.depreciation.notna().sum()}/{len(merged)}")
+    print(f"  Unique corps: {merged.corp_code.nunique()}")
+    year_counts = merged.groupby("corp_code").fiscal_year.nunique()
+    print(f"  Corps with 2+ years: {(year_counts >= 2).sum()}")
+    print(f"  Corps with 3+ years: {(year_counts >= 3).sum()}")
+
+    merged.to_parquet(SEED_DIR / "seed_financials.parquet", index=False)
+    print(f"  Saved seed_financials.parquet")
 
 
 def main():
@@ -339,12 +365,14 @@ def main():
                         help="Skip DART financial data fetch (slow)")
     parser.add_argument("--fin-limit", type=int, default=None,
                         help="Limit corps for financial sync (for testing)")
+    parser.add_argument("--rate", type=float, default=1.5,
+                        help="DART API requests per second (default: 1.5)")
     args = parser.parse_args()
 
     fix_corps_market()
     fix_prices_marcap()
     if not args.skip_financials:
-        fix_financials(limit=args.fin_limit)
+        fix_financials(limit=args.fin_limit, rate=args.rate)
     else:
         print("\n  [3/3] Skipped financials (--skip-financials)")
 

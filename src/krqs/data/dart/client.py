@@ -62,6 +62,7 @@ class DartClient:
             else settings.dart_rate_limit_per_sec
         )
         self._limiter = TokenBucketRateLimiter(rate)
+        self._timeout = timeout
         self._client = httpx.Client(base_url=self.BASE_URL, timeout=timeout)
 
     def close(self) -> None:
@@ -74,10 +75,10 @@ class DartClient:
         self.close()
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=2, min=3, max=60),
         retry=retry_if_exception_type(
-            (httpx.TransportError, httpx.HTTPStatusError)
+            (httpx.TransportError, httpx.HTTPStatusError, ConnectionError)
         ),
         reraise=True,
     )
@@ -86,7 +87,15 @@ class DartClient:
     ) -> dict[str, Any]:
         self._limiter.acquire()
         merged = {"crtfc_key": self.api_key, **params}
-        resp = self._client.get(path, params=merged)
+        try:
+            resp = self._client.get(path, params=merged)
+        except httpx.TransportError:
+            # Re-create client on connection reset to get a fresh socket
+            self._client.close()
+            self._client = httpx.Client(
+                base_url=self.BASE_URL, timeout=self._timeout
+            )
+            raise
         resp.raise_for_status()
         data = resp.json()
         status = str(data.get("status", ""))
