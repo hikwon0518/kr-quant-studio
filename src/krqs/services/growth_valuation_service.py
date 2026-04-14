@@ -57,6 +57,8 @@ def get_growth_valuation_table(
     stock_codes = growth_df["stock_code"].dropna().tolist()
     prices_df = get_latest_prices_bulk(con, stock_codes=stock_codes)
     if prices_df.empty:
+        for col in ("close", "marcap", "per", "pbr", "peg"):
+            growth_df[col] = None
         return growth_df.head(limit).reset_index(drop=True)
 
     # 3. PER / PBR from SQL: latest price joined with latest annual financials

@@ -91,6 +91,7 @@ if df.empty:
         unsafe_allow_html=True,
     )
     st.stop()
+    st.stop()
 
 # ── Apply numeric coercion ──────────────────────────────────────────
 for col in ["per", "pbr", "peg", "rev_cagr", "op_cagr",
