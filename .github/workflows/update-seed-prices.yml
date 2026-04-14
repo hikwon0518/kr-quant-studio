@@ -1,0 +1,111 @@
+name: Update seed price data
+
+on:
+  schedule:
+    # KRX closes 15:30 KST = 06:30 UTC. Run at 08:00 UTC (17:00 KST) weekdays.
+    - cron: "0 8 * * 1-5"
+  workflow_dispatch: # manual trigger
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install pandas finance-datareader pyarrow
+
+      - name: Update seed prices
+        run: |
+          python -c "
+          import FinanceDataReader as fdr
+          import pandas as pd
+          from pathlib import Path
+
+          SEED = Path('data/seed')
+
+          # Load existing prices
+          prices = pd.read_parquet(SEED / 'seed_prices.parquet')
+          latest_date = prices['trade_date'].max()
+          print(f'Current latest: {latest_date}')
+
+          # Get active stock list with shares data
+          krx = fdr.StockListing('KRX')
+          shares_map = dict(zip(krx['Code'], krx['Stocks']))
+          stock_codes = prices['stock_code'].unique().tolist()
+          print(f'Stocks to update: {len(stock_codes)}')
+
+          # Fetch new prices since latest date
+          from datetime import date, timedelta
+          start = str(pd.Timestamp(latest_date).date() + timedelta(days=1))
+          end = str(date.today())
+          print(f'Fetching {start} to {end}')
+
+          if start > end:
+              print('Already up to date')
+              exit(0)
+
+          import time
+          new_rows = []
+          synced = 0
+          for i, code in enumerate(stock_codes):
+              try:
+                  df = fdr.DataReader(code, start, end)
+                  if df is not None and not df.empty:
+                      for dt, row in df.iterrows():
+                          shares = shares_map.get(code)
+                          close_val = int(row['Close']) if pd.notna(row.get('Close')) else None
+                          marcap = int(close_val * shares) if close_val and shares else None
+                          new_rows.append({
+                              'stock_code': code,
+                              'trade_date': dt.date(),
+                              'open': int(row['Open']) if pd.notna(row.get('Open')) else None,
+                              'high': int(row['High']) if pd.notna(row.get('High')) else None,
+                              'low': int(row['Low']) if pd.notna(row.get('Low')) else None,
+                              'close': close_val,
+                              'volume': int(row['Volume']) if pd.notna(row.get('Volume')) else None,
+                              'change_pct': float(row['Change']) if pd.notna(row.get('Change')) else None,
+                              'marcap': marcap,
+                              'shares_out': int(shares) if shares else None,
+                          })
+                      synced += 1
+              except Exception:
+                  pass
+              if i > 0 and i % 5 == 0:
+                  time.sleep(0.3)
+              if (i + 1) % 500 == 0:
+                  print(f'  Progress: {i+1}/{len(stock_codes)}, synced={synced}')
+
+          print(f'New rows: {len(new_rows)}, stocks synced: {synced}')
+
+          if new_rows:
+              new_df = pd.DataFrame(new_rows)
+              merged = pd.concat([prices, new_df], ignore_index=True)
+              merged = merged.drop_duplicates(subset=['stock_code', 'trade_date'], keep='last')
+              merged = merged.sort_values(['stock_code', 'trade_date']).reset_index(drop=True)
+              merged['shares_out'] = merged['shares_out'].astype('Int64')
+              merged['marcap'] = merged['marcap'].astype('Int64')
+              merged.to_parquet(SEED / 'seed_prices.parquet', index=False)
+              new_latest = merged['trade_date'].max()
+              print(f'Saved. Rows: {len(prices)} -> {len(merged)}, latest: {new_latest}')
+          else:
+              print('No new data (market closed?)')
+              exit(0)
+          "
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/seed/seed_prices.parquet
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "chore: auto-update seed prices $(date +%Y-%m-%d)"
+          git push
