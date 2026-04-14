@@ -30,8 +30,7 @@ with st.sidebar:
         price_count = 0
     if price_count == 0:
         st.info(
-            "가격 데이터가 아직 없습니다. 가격 없이 성장 분석만 표시합니다.\n\n"
-            "로컬 환경에서 `python scripts/sync_prices.py`로 동기화하세요."
+            "가격 데이터가 아직 없습니다. 가격 없이 성장 분석만 표시합니다."
         )
 
     fiscal_year = st.selectbox(

@@ -95,7 +95,16 @@ with st.sidebar:
             "SELECT MAX(source_updated_at) AS latest FROM financials_quarterly"
         ).fetchone()
         if row and row[0]:
-            st.caption(f"최종 데이터: {row[0]}")
+            from datetime import datetime
+            ts = row[0]
+            if isinstance(ts, str):
+                ts = datetime.fromisoformat(ts)
+            st.caption(f"재무 데이터: {ts:%Y-%m-%d}")
+        price_row = con.execute(
+            "SELECT MAX(trade_date) AS latest FROM price_daily"
+        ).fetchone()
+        if price_row and price_row[0]:
+            st.caption(f"가격 데이터: {price_row[0]}")
     except Exception:
         pass
 

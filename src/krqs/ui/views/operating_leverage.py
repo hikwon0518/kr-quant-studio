@@ -36,7 +36,10 @@ st.caption("매출 성장률 × GPM 밴드 시나리오 매트릭스")
 with st.sidebar:
     with st.expander("데이터 동기화", expanded=(listed_count == 0)):
         if not _SYNC_AVAILABLE:
-            st.info("DART 동기화 기능은 로컬 환경에서만 사용 가능합니다.")
+            st.info(
+                "DART API 동기화 모듈을 불러올 수 없습니다.\n\n"
+                "Cloud 환경에서는 seed 데이터가 자동으로 로드됩니다."
+            )
         elif listed_count == 0:
             st.warning("DB가 비어있습니다. 먼저 기업코드를 갱신하세요.")
         else:
